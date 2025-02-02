@@ -1,0 +1,36 @@
+*{
+    font-weight:bold;
+}
+
+
+QMainWindow {
+    background-color:rgb(84, 87, 134);
+    color: ghostwhite;
+}
+
+QMenuBar {
+    background-color: rgb(84,87,134);
+    color: ghostwhite;
+    border:1px solid ghostwhite;
+}
+
+QMenuBar::item:selected {
+    background-color:rgb(61, 54, 78);
+    border-radius:25px;
+}
+
+QToolBar {
+    background-color: rgb(84,87,134);
+    border:1px solid ghostwhite;
+}
+
+QToolButton:hover {
+    background-color: #f39c12;
+}
+
+QTextEdit {
+    background-color: rgb(84,87,134);
+    color: ghostwhite;
+    border: 1px solid rgb(209, 202, 191);
+    padding: 5px;
+}
