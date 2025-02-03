@@ -4,39 +4,134 @@ from PySide6.QtCore import *
 from PySide6.QtPrintSupport import *
 import sys
 
-class LineNumberArea(QWidget):
-    def __init__(self, text_edit):
-        super().__init__(text_edit)
-        self.text_edit = text_edit
+# modulo propio
+from resources.tools import banner
 
-        # Hacer que el área de números de línea sea transparente y del tamaño adecuado
+class LineNumberArea(QWidget):
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.editor = editor
         self.setStyleSheet("background: rgba(0, 0, 0, 0);")
-        self.setFixedWidth(50)  # Ancho fijo para los números
+
+    def sizeHint(self):
+        return QSize(self.editor.line_number_area_width(), 0)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setPen(QColor(255, 255, 255))  # Color blanco para los números
-        painter.setFont(self.font())
+        # Using the global background color (same as QTextEdit)
+        painter.fillRect(event.rect(), QColor(84, 87, 134))  # Modify this as needed
+        painter.setPen(QColor(255, 255, 255))  # White for line numbers
 
-        block = self.text_edit.document().firstBlock()
-        block_number = 1
+        block = self.editor.firstVisibleBlock()
+        block_number = block.blockNumber()
+        offset = self.editor.contentOffset()
+        top = self.editor.blockBoundingGeometry(block).translated(offset).top()
+        bottom = top + self.editor.blockBoundingRect(block).height()
 
-        # Dibujar los números de línea
-        while block.isValid():
-            rect = self.text_edit.document().documentLayout().blockBoundingRect(block)
-            painter.drawText(0, rect.top(), self.width(), rect.height(), Qt.AlignRight, str(block_number))
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                number = str(block_number + 1)
+                painter.drawText(0, int(top), self.width() - 2, 
+                                self.editor.fontMetrics().height(),
+                                Qt.AlignRight, number)
+
             block = block.next()
+            top = bottom
+            bottom = top + self.editor.blockBoundingRect(block).height()
             block_number += 1
+
+
+
+class CodeEditor(QPlainTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.line_number_area = LineNumberArea(self)
+
+        self.blockCountChanged.connect(self.update_line_number_area_width)
+        self.updateRequest.connect(self.update_line_number_area)
+        self.cursorPositionChanged.connect(self.highlight_current_line)
+
+        self.load_stylesheet('resources/style/style.qss')
+
+        self.update_line_number_area_width()
+        self.highlight_current_line()
+
+        # Configurar la fuente del editor
+        font = QFont()
+        font.setFamily('Roboto Mono')
+        font.setFixedPitch(True)
+        font.setPointSize(13)
+        self.setFont(font)
+
+    def line_number_area_width(self):
+        digits = 1
+        max_num = max(1, self.blockCount())
+        while max_num >= 10:
+            max_num //= 10
+            digits += 1
+        space = 3 + self.fontMetrics().horizontalAdvance('9') * digits
+        return space
+
+    def update_line_number_area_width(self):
+        self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+
+    def update_line_number_area(self, rect, dy):
+        if dy:
+            self.line_number_area.scroll(0, dy)
+        else:
+            self.line_number_area.update(0, rect.y(), self.line_number_area.width(), rect.height())
+
+        if rect.contains(self.viewport().rect()):
+            self.update_line_number_area_width()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        cr = self.contentsRect()
+        self.line_number_area.setGeometry(QRect(cr.left(), cr.top(),
+                                              self.line_number_area_width(), cr.height()))
+
+    def highlight_current_line(self):
+        extra_selections = []
+        if not self.isReadOnly():
+            selection = QTextEdit.ExtraSelection()
+            line_color = QColor(Qt.darkGray).darker(140)
+            selection.format.setBackground(line_color)
+            selection.format.setProperty(QTextFormat.FullWidthSelection, True)
+            selection.cursor = self.textCursor()
+            selection.cursor.clearSelection()
+            extra_selections.append(selection)
+        self.setExtraSelections(extra_selections)
+
+    def load_stylesheet(self, file_path):
+        """Carga y aplica un archivo QSS."""
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                stylesheet = file.read()
+                # Customizing the QPlainTextEdit widget
+                editor_stylesheet = """
+                QPlainTextEdit {
+                    background-color: rgb(84, 87, 134);
+                    color: ghostwhite;
+                    border: 1px solid rgb(209, 202, 191);
+                    padding: 5px;
+                    font-family: 'Roboto Mono';
+                    font-size: 13px;
+                }
+                """
+                stylesheet += editor_stylesheet
+                self.setStyleSheet(stylesheet)
+        except Exception as e:
+            print(f"Error cargando stylesheet: {e}")
+
 
 class NoteEditor(QMainWindow):
     def __init__(self):
         super().__init__()
-
         # Establecer icono de la ventana
         self.setWindowIcon(QIcon("resources/img/compilador.png"))
 
         # Definir variables
-        self.title = "Notas"
+        self.title = "Note Editor"
         self.left = 100
         self.top = 100
         self.width = 800
@@ -59,13 +154,13 @@ class NoteEditor(QMainWindow):
         self.toolBar.setIconSize(QSize(32, 32))  # Aumentar el tamaño de los iconos
 
         # Agregar acciones usando la función create_action
-        self.newAction = self.create_action("New File", "resources/img/agregar-archivo.png", self.new_content)
-        self.openAction = self.create_action("Open File", "resources/img/abrir-documento.png", self.load_content)
-        self.saveAction = self.create_action("Save File", "resources/img/disquete.png", self.save_content)
-        self.saveAsAction = self.create_action("Save As File", "resources/img/guardar-el-archivo.png", self.save_content_as)
-        self.exitAction = self.create_action("Exit Application", "resources/img/cerrar-sesion.png", self.close)
-        self.analizerAction = self.create_action("Analyze Content", "resources/img/triangulo.png", self.analize_content)
-        self.newTerminal = self.create_action("New Terminal", "resources/img/comando.png", self.new_terminal)
+        self.newAction = self.create_action("New File", "resources/img/inverted/agregar-archivo.png", self.new_content)
+        self.openAction = self.create_action("Open File", "resources/img/inverted/abrir-documento.png", self.load_content)
+        self.saveAction = self.create_action("Save File", "resources/img/inverted/disquete.png", self.save_content)
+        self.saveAsAction = self.create_action("Save As File", "resources/img/inverted/guardar-el-archivo.png", self.save_content_as)
+        self.exitAction = self.create_action("Exit Application", "resources/img/inverted/cerrar-sesion.png", self.close)
+        self.analizerAction = self.create_action("Analyze Content", "resources/img/inverted/triangulo.png", self.analize_content)
+        self.newTerminal = self.create_action("New Terminal", "resources/img/inverted/comando.png", self.new_terminal)
 
         # Agregar acciones al menú
         self.fileMenu.addAction(self.newAction)
@@ -89,16 +184,30 @@ class NoteEditor(QMainWindow):
         # Orientar la barra de herramientas a la izquierda
         self.addToolBar(Qt.LeftToolBarArea, self.toolBar)
 
-        # Crear un QTextEdit para la edición de notas
-        self.textEdit = QTextEdit(self)
+        # Crear el editor de código
+        self.textEdit = CodeEditor()
         self.setCentralWidget(self.textEdit)
 
-        # Crear y agregar el área de números de línea
-        self.lineNumberArea = LineNumberArea(self.textEdit)
-        self.textEdit.setViewportMargins(self.lineNumberArea.width(), 0, 0, 0)
-
-        # Conectar la señal textChanged para actualizar el área de números de línea
-        self.textEdit.textChanged.connect(self.update_line_numbers)
+        # Crear la terminal (QTextEdit) en la parte inferior
+        self.terminal = QTextEdit(self)
+        self.terminal.setReadOnly(True)
+        
+        # Configurar la fuente monoespaciada
+        font = QFont("Roboto Mono", 10)
+        font.setStyleHint(QFont.Monospace)
+        self.terminal.setFont(font)
+        
+        # Establecer un ancho de carácter fijo - usando el método correcto para PySide6
+        metrics = QFontMetrics(font)
+        self.terminal.setTabStopDistance(4 * metrics.horizontalAdvance(' '))
+        
+        banner_text = banner.get_banner_with_info("Viper Dev")
+        self.terminal.setHtml(banner_text)
+        # Crear un layout para contener el editor de código y la terminal
+        self.splitter = QSplitter(Qt.Vertical)
+        self.splitter.addWidget(self.textEdit)
+        self.splitter.addWidget(self.terminal)
+        self.setCentralWidget(self.splitter)
 
         # Aplicar el efecto Frosted Glass/Aero (transparencia y desenfoque)
         self.apply_frosted_glass_effect()
@@ -120,29 +229,31 @@ class NoteEditor(QMainWindow):
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 stylesheet = file.read()
-                print("QSS cargado correctamente:\n", stylesheet)  # Debug
                 self.setStyleSheet(stylesheet)
         except Exception as e:
             print(f"Error cargando stylesheet: {e}")
 
     def apply_frosted_glass_effect(self):
         """Aplica un efecto de vidrio esmerilado (Frosted Glass)."""
-        # Establecer la transparencia de la ventana
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowOpacity(0.9)  # Reduce la opacidad para simular el efecto de "vidrio"
 
-        # Aplicar desenfoque a un widget (puedes aplicar esto a otros widgets también)
-        blur_effect = QGraphicsBlurEffect()
-        blur_effect.setBlurRadius(10)  # Controla el desenfoque
-        self.textEdit.setGraphicsEffect(blur_effect)  # Aplica el desenfoque al QTextEdit
+    # Modificar la función `new_terminal` para solo abrir la terminal vacía
+    def new_terminal(self):
+        """Abre una nueva terminal vacía."""
+        self.terminal.clear()  # Limpiar cualquier texto previo
+        self.terminal.setPlaceholderText(banner.get_banner_with_info("Hello World!"))  # Placeholder
+        print("Nueva terminal abierta.")
 
-    def update_line_numbers(self):
-        """Actualiza el área de números de línea después de que se cambie el texto."""
-        self.lineNumberArea.update()
+    # Modificar la función `analize_content` para imprimir el texto del editor en la terminal
+    def analize_content(self):
+        """Imprimir el contenido del editor en la terminal."""
+        content = self.textEdit.toPlainText()  # Obtener el texto del editor
+        self.terminal.append(content)  # Mostrar el contenido en la terminal
+        print("Contenido analizado y mostrado en la terminal.")
 
-    # Declaración de funciones
     def new_content(self):
-        print("Contenido creado...")
+        print("Contenido nuevo...")
 
     def save_content(self):
         print("Contenido guardado...")
@@ -153,11 +264,6 @@ class NoteEditor(QMainWindow):
     def load_content(self):
         print("Contenido cargado...")
 
-    def analize_content(self):
-        print("Contenido analizado...")
-
-    def new_terminal(self):
-        print("Nueva terminal abierta...")
 
 if __name__ == '__main__':
     application = QApplication(sys.argv)
