@@ -242,8 +242,21 @@ class NoteEditor(QMainWindow):
     def new_terminal(self):
         """Abre una nueva terminal vacía."""
         self.terminal.clear()  # Limpiar cualquier texto previo
-        self.terminal.setPlaceholderText(banner.get_banner_with_info("Hello World!"))  # Placeholder
-        print("Nueva terminal abierta.")
+        # Crear la terminal (QTextEdit) en la parte inferior
+        self.terminal = QTextEdit(self)
+        self.terminal.setReadOnly(True)
+        
+        # Configurar la fuente monoespaciada
+        font = QFont("Roboto Mono", 10)
+        font.setStyleHint(QFont.Monospace)
+        self.terminal.setFont(font)
+        
+        # Establecer un ancho de carácter fijo - usando el método correcto para PySide6
+        metrics = QFontMetrics(font)
+        self.terminal.setTabStopDistance(4 * metrics.horizontalAdvance(' '))
+        
+        banner_text = banner.get_banner_with_info("Viper Dev")
+        self.terminal.setHtml(banner_text)
 
     # Modificar la función `analize_content` para imprimir el texto del editor en la terminal
     def analize_content(self):
