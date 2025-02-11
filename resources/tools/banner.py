@@ -17,7 +17,7 @@ def get_banner_with_info(text):
     <div style='white-space: pre; font-family: "Roboto Mono", monospace; font-size: 12px; line-height: 1;'>
     Compiler v.1.0 - {file_dir} - {file_name} - {current_date}
     {banner}
-    {'-' * 1800}
+    {'-' * 500}
     </div>
     """
     return output

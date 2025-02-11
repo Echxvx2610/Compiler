@@ -177,7 +177,7 @@ class NoteEditor(QMainWindow):
         # Crear barra de menú
         self.menuBar = self.menuBar()
         self.fileMenu = self.menuBar.addMenu("File")
-        self.proyectMenu = self.menuBar.addMenu("Proyect")
+        self.compileMenu = self.menuBar.addMenu("Compile")
         self.terminalMenu = self.menuBar.addMenu("Terminal")
 
         # Crear barra de herramientas
@@ -190,7 +190,7 @@ class NoteEditor(QMainWindow):
         self.saveAction = self.create_action("Save File", "resources/img/inverted/disquete.png", self.save_content)
         self.saveAsAction = self.create_action("Save As File", "resources/img/inverted/guardar-el-archivo.png", self.save_content_as)
         self.exitAction = self.create_action("Exit Application", "resources/img/inverted/cerrar-sesion.png", self.close)
-        self.analizerAction = self.create_action("Translate", "resources/img/inverted/triangulo.png", self.analize_content)
+        self.analizerAction = self.create_action("Analyze Content", "resources/img/inverted/triangulo.png", self.analize_content)
         self.newTerminal = self.create_action("New Terminal", "resources/img/inverted/comando.png", self.new_terminal)
 
         # Agregar acciones al menú
@@ -200,7 +200,7 @@ class NoteEditor(QMainWindow):
         self.fileMenu.addAction(self.saveAsAction)
         self.fileMenu.addAction(self.exitAction)
 
-        self.proyectMenu.addAction(self.analizerAction)
+        self.compileMenu.addAction(self.analizerAction)
         self.terminalMenu.addAction(self.newTerminal)
 
         # Agregar acciones a la barra de herramientas
@@ -278,7 +278,7 @@ class NoteEditor(QMainWindow):
 
     def analize_content(self):
         """Analiza el contenido del editor línea por línea y muestra los resultados en la terminal."""
-        
+
         content = self.textEdit.toPlainText()  # Obtener el texto completo del editor
         lines = content.splitlines()  # Dividir el contenido en líneas
 
@@ -291,71 +291,61 @@ class NoteEditor(QMainWindow):
             "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local"
         ]
 
-        # Expresiones regulares
+        # Expresiones regulares para los diferentes elementos
         identificador_regex = r'\b[A-Za-z_][A-Za-z0-9_]*\b'
-        numero_regex = r'\b\d+\.\d+|\b\d+\b'  # Enteros y decimales
+        numero_regex = r'\b\d+\.\d+|\b\d+\b'  # para enteros y decimales
         comentario_unilinea_regex = r'//.*'  # Comentarios de una sola línea
-        comentario_multibloque_inicio_regex = r'/\*'  # Detectar inicio de comentario multibloque
-        comentario_multibloque_fin_regex = r'\*/'  # Detectar cierre de comentario multibloque
-        cadena_regex = r'"([^"]*)"'  # Captura texto entre comillas dobles
-        caracter_regex = r"'([^']*)'"  # Captura caracteres entre comillas simples
-        simbolo_regex = r'[!+<>=#\[\]{}();,.-]'  # Símbolos comunes en C
-        libreria_regex = r'\b[A-Za-z_][A-Za-z0-9_]*\.h\b'  # Librerías .h
+        comentario_multibloque_regex = r'/\*.*?\*/'  # Comentarios multibloque
+        cadena_regex = r'"[^"]*"'
+        caracter_regex = r"'[^']*'"
+        simbolo_regex = r'[!+<>=#\[\]{}();,.-]'  # Incluye los símbolos comunes en C
+        libreria_regex = r'\b[A-Za-z_][A-Za-z0-9_]*\.h\b'  # Captura librerías .h
 
-        en_comentario_multibloque = False  # Bandera para saber si estamos dentro de un comentario de bloque
-        comentario_multibloque_acumulado = ""  # Guardar contenido del comentario multibloque
+        # Función para detectar caracteres no imprimibles en texto
+        def detectar_caracteres_no_imprimibles(texto):
+            r"""Detecta caracteres no imprimibles y los muestra como su código ASCII en formato \xNN."""
+            return ''.join([f'\\x{ord(c):02x}' if ord(c) < 32 or ord(c) > 126 else c for c in texto])
 
+        # Recorrer cada línea del contenido
         for line in lines:
             self.terminal.append(f"Análisis de línea: {line}")
-
-            # Si estamos dentro de un comentario multibloque, agregamos contenido hasta encontrar */
-            if en_comentario_multibloque:
-                comentario_multibloque_acumulado += f"\n{line}"
-                if re.search(comentario_multibloque_fin_regex, line):
-                    en_comentario_multibloque = False
-                    self.terminal.append(f"  - Comentarios:\n    - {comentario_multibloque_acumulado.strip()}")
-                continue  # No analizamos más esta línea
-
-            # Buscar y extraer cadenas antes de eliminar comentarios
-            cadenas = re.findall(cadena_regex, line)
-            caracteres = re.findall(caracter_regex, line)
-
-            # Buscar comentarios antes de analizar otros elementos
+            
+            # Buscar y procesar los comentarios
             comentarios_unilinea = re.findall(comentario_unilinea_regex, line)
-            comentario_multibloque_inicio = re.search(comentario_multibloque_inicio_regex, line)
-            comentario_multibloque_fin = re.search(comentario_multibloque_fin_regex, line)
+            comentarios_multibloque = re.findall(comentario_multibloque_regex, line)
+            
+            # Procesar los comentarios de una sola línea y multibloque
+            comentarios = comentarios_unilinea + comentarios_multibloque  # Combina los dos tipos de comentarios
 
-            # Si encontramos un comentario multibloque que no cierra, activamos la bandera
-            if comentario_multibloque_inicio and not comentario_multibloque_fin:
-                en_comentario_multibloque = True
-                comentario_multibloque_acumulado = line  # Iniciar el comentario acumulado
-                continue  # No analizamos más esta línea
+            # Detectar los caracteres no imprimibles en los comentarios y las cadenas
+            ascii_detectados_comentarios = []
+            for comment in comentarios:
+                ascii_detectados_comentarios.extend([f'\\x{ord(c):02x}' for c in comment if ord(c) < 32 or ord(c) > 126])
 
-            # Unir los comentarios de una línea y multibloques en una sola lista
-            comentarios = comentarios_unilinea
-            if comentario_multibloque_inicio and comentario_multibloque_fin:
-                comentarios.append(re.search(r'/\*.*?\*/', line).group())
-
-            # **Eliminar cadenas y comentarios antes de buscar otros elementos**
-            line_sin_cadenas = re.sub(cadena_regex, '', line)  # Elimina cadenas
-            line_sin_comentarios = re.sub(comentario_unilinea_regex, '', line_sin_cadenas)  # Elimina comentarios de línea
-            line_sin_comentarios = re.sub(r'/\*.*?\*/', '', line_sin_comentarios)  # Elimina comentarios multibloque
-
-            # Identificar elementos en la línea limpia
+            # Eliminar los comentarios para evitar que interfieran con el análisis de otros elementos
+            line_sin_comentarios = re.sub(comentario_unilinea_regex, '', line)
+            line_sin_comentarios = re.sub(comentario_multibloque_regex, '', line_sin_comentarios)  # Eliminar comentarios multibloque
+            
+            # Encontrar los diferentes elementos en la línea
             identificadores = re.findall(identificador_regex, line_sin_comentarios)
             numeros = re.findall(numero_regex, line_sin_comentarios)
+            cadenas = re.findall(cadena_regex, line_sin_comentarios)
+            caracteres = re.findall(caracter_regex, line_sin_comentarios)
             simbolos = re.findall(simbolo_regex, line_sin_comentarios)
             librerias = re.findall(libreria_regex, line_sin_comentarios)
 
-            # Filtrar identificadores que son palabras reservadas
+            # Filtrar identificadores reservados
             identificadores_reservados = [word for word in identificadores if word in palabras_reservadas_C]
-
-            # Filtrar identificadores de funciones (que terminan con `()`)
             identificadores_funciones = [ident for ident in identificadores if f"{ident}()" in line_sin_comentarios]
 
-            # **Imprimir los elementos detectados**
+            # Lista para almacenar los caracteres ASCII no imprimibles detectados en cadenas
+            ascii_detectados_cadenas = []
+            for cadena in cadenas:
+                ascii_detectados_cadenas.extend([f'\\x{ord(c):02x}' for c in cadena if ord(c) < 32 or ord(c) > 126])
+
+            # Mostrar resultados solo si la categoría tiene elementos
             if simbolos:
-                self.terminal.append("  - Símbolos:")
+                self.terminal.append("  - Simbolos:")
                 for sym in simbolos:
                     self.terminal.append(f"    - {sym}")
 
@@ -393,15 +383,31 @@ class NoteEditor(QMainWindow):
             if cadenas:
                 self.terminal.append("  - Cadenas:")
                 for string in cadenas:
-                    string = string.replace('\n', '\\x0a').replace('\t', '\\x09')
-                    self.terminal.append(f"    - \"{string}\"")
+                    # Detectar caracteres no imprimibles en las cadenas también
+                    string = detectar_caracteres_no_imprimibles(string)
+                    self.terminal.append(f"    - {string}")
 
             if caracteres:
                 self.terminal.append("  - Caracteres:")
                 for char in caracteres:
-                    self.terminal.append(f"    - '{char}'")
+                    # Detectar caracteres no imprimibles en los caracteres también
+                    char = detectar_caracteres_no_imprimibles(char)
+                    self.terminal.append(f"    - {char}")
+
+            # Mostrar ASCII detectados en comentarios y cadenas, si hay
+            if ascii_detectados_comentarios or ascii_detectados_cadenas:
+                self.terminal.append("  - ASCII:")
+                # Mostrar los ASCII detectados de los comentarios
+                for ascii_char in ascii_detectados_comentarios:
+                    self.terminal.append(f"    - {ascii_char}")
+                # Mostrar los ASCII detectados de las cadenas
+                for ascii_char in ascii_detectados_cadenas:
+                    self.terminal.append(f"    - {ascii_char}")
 
         print("Contenido analizado línea por línea y mostrado en la terminal.")
+
+
+
 
 
 
