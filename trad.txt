@@ -1,17 +1,123 @@
-Libreria: #include <stdio.h>
-Palabra_Reservada: int
-Identificador: main
+Simbolo: #
+Palabra Reservada: include
+Simbolo: <
+Libreria: stdio.h
+Simbolo: >
+
+Palabra Reservada: int
+Identificador de Funcion: main
 Simbolo: (
 Simbolo: )
 Simbolo: {
-Comentario: // Imprime "Hello, World!" en la consola
-Identificador: printf
+
+Palabra Reservada: int
+Identificador: dia
+Simbolo: =
+Numero: 3
+Simbolo: ;
+
+Palabra Reservada: switch
 Simbolo: (
-Cadena: "Hello, World!\n"
+Identificador: dia
+Simbolo: )
+Simbolo: {
+
+Palabra Reservada: case
+Numero: 1
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Lunes\n"
 Simbolo: )
 Simbolo: ;
-Comentario: // Retorna 0 para indicar que el programa terminó correctamente
-Palabra_Reservada: return
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: case
+Numero: 2
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Martes\n"
+Simbolo: )
+Simbolo: ;
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: case
+Numero: 3
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Miércoles\n"
+Simbolo: )
+Simbolo: ;
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: case
+Numero: 4
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Jueves\n"
+Simbolo: )
+Simbolo: ;
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: case
+Numero: 5
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Viernes\n"
+Simbolo: )
+Simbolo: ;
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: case
+Numero: 6
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Sábado\n"
+Simbolo: )
+Simbolo: ;
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: case
+Numero: 7
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Domingo\n"
+Simbolo: )
+Simbolo: ;
+
+Palabra Reservada: break
+Simbolo: ;
+
+Palabra Reservada: default
+
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Número de día inválido\n"
+Simbolo: )
+Simbolo: ;
+
+Simbolo: }
+
+Palabra Reservada: return
 Numero: 0
 Simbolo: ;
+
 Simbolo: }

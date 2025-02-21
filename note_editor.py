@@ -124,85 +124,6 @@ class CodeEditor(QPlainTextEdit):
         except Exception as e:
             print(f"Error cargando stylesheet: {e}")
 
-
-class TraductorC:
-    def __init__(self):
-        self.tokens = (
-            'PALABRA_RESERVADA', 'SIMBOLO', 'NUMERO', 'CADENA', 'LIBRERIA', 'COMENTARIO', 'IDENTIFICADOR'
-        )
-
-        self.dicc_palabras_reservadas = {
-            "auto": "automatico", "break": "romper", "case": "caso", "char": "caracter",
-            "const": "constante", "continue": "continuar", "default": "defecto", "do": "hacer",
-            "double": "doble", "else": "sino", "enum": "enumeracion", "extern": "externo",
-            "float": "flotante", "for": "para", "goto": "ir_a", "if": "si", "inline": "en_linea",
-            "int": "entero", "long": "largo", "register": "registro", "restrict": "restringido",
-            "return": "retornar", "short": "corto", "signed": "con_signo", "sizeof": "tamaño_de",
-            "static": "estatico", "struct": "estructura", "switch": "selector", "typedef": "definir_tipo",
-            "union": "union", "unsigned": "sin_signo", "void": "vacio", "volatile": "volatil",
-            "while": "mientras", "include": "incluir"
-        }
-
-        self.lexer = lex.lex(module=self)
-
-    t_ignore = ' \t'
-
-    def t_PALABRA_RESERVADA(self, t):
-        r'Palabra_Reservada: .*'
-        token = t.value.split(': ')[1]
-        t.value = self.dicc_palabras_reservadas.get(token, token)
-        return t
-
-    def t_SIMBOLO(self, t):
-        r'Simbolo: .*'
-        t.value = t.value.split(': ')[1]
-        return t
-
-    def t_NUMERO(self, t):
-        r'Numero: .*'
-        t.value = t.value.split(': ')[1]
-        return t
-
-    def t_CADENA(self, t):
-        r'Cadena: .*'
-        t.value = t.value.split(': ')[1]
-        return t
-
-    def t_LIBRERIA(self, t):
-        r'Libreria: .*'
-        t.value = t.value.split(': ')[1]
-        return t
-
-    def t_COMENTARIO(self, t):
-        r'Comentario: .*'
-        t.value = t.value.split(': ')[1]
-        return t
-
-    def t_IDENTIFICADOR(self, t):
-        r'Identificador: .*'
-        t.value = t.value.split(': ')[1]
-        return t
-
-    def t_error(self, t):
-        print(f"Caracter ilegal: {t.value[0]}")
-        t.lexer.skip(1)
-
-    def traducir(self):
-        """Lee trad.txt y genera traduccion.txt usando PLY."""
-        with open("trad.txt", "r", encoding="utf-8") as file:
-            data = file.read()
-
-        self.lexer.input(data)
-
-        with open("traduccion.txt", "w", encoding="utf-8") as out_file:
-            while True:
-                tok = self.lexer.token()
-                if not tok:
-                    break
-                out_file.write(f"{tok.type}: {tok.value}\n")
-
-        print("Traducción completada y guardada en traduccion.txt.")
-
 class NoteEditor(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -355,42 +276,164 @@ class NoteEditor(QMainWindow):
         self.terminal.setHtml(banner_text)
 
     def analize_content(self):
-        """Analiza el contenido del editor y guarda los resultados en trad.txt usando re."""
-        content = self.textEdit.toPlainText()
-        lines = content.splitlines()
+        """
+        Analiza el contenido del editor línea por línea y genera dos archivos:
+        - trad.txt: Análisis detallado del código (solo tokens)
+        - traduccion.c: Código C traducido al español
+        """
+        # Definición de palabras clave y símbolos
+        PALABRAS_RESERVADAS = {
+            "auto": "automatico", "break": "romper", "case": "caso",
+            "char": "caracter", "const": "constante", "continue": "continuar",
+            "default": "defecto", "do": "hacer", "double": "doble",
+            "else": "sino", "enum": "enumeracion", "extern": "externo",
+            "float": "flotante", "for": "para", "goto": "ir_a",
+            "if": "si", "inline": "en_linea", "int": "entero",
+            "long": "largo", "register": "registro", "restrict": "restringido",
+            "return": "retornar", "short": "corto", "signed": "con_signo",
+            "sizeof": "tamaño_de", "static": "estatico", "struct": "estructura",
+            "switch": "selector", "typedef": "definir_tipo", "union": "union",
+            "unsigned": "sin_signo", "void": "vacio", "volatile": "volatil",
+            "while": "mientras", "include": "incluir"
+        }
+        
+        SIMBOLOS = ['#', '<', '>', '(', ')', '{', '}', ';', ',', '.', '+', '-', '*', '/', '=', '[', ']']
 
-        palabras_reservadas_C = [
-            "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
-            "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register",
-            "restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef",
-            "union", "unsigned", "void", "volatile", "while", "include"
-        ]
+        def clasificar_token(token, siguiente_token=None):
+            """Clasifica un token y retorna su tipo y valor."""
+            if token.startswith('//') or token.startswith('/*'):
+                return "Comentario", token
+            elif token in PALABRAS_RESERVADAS:
+                return "Palabra Reservada", token
+            elif token.endswith('.h'):
+                return "Libreria", token
+            elif token in SIMBOLOS:
+                return "Simbolo", token
+            elif token.startswith('"') or token.startswith("'"):
+                return "Cadena", token
+            elif token.replace('.', '').isdigit():
+                return "Numero", token
+            elif siguiente_token == '(':
+                return "Identificador de Funcion", token
+            else:
+                return "Identificador", token
 
-        simbolos = ['#', '<', '>', '(', ')', '{', '}', ';', ',', '.', '+', '-', '*', '/', '=', '[', ']']
+        def procesar_linea(linea, en_comentario_bloque, comentario_acumulado):
+            """
+            Procesa una línea de código y retorna sus tokens clasificados.
+            También maneja el estado de los comentarios de bloque.
+            """
+            import re
+            
+            # Si estamos en un comentario de bloque, buscamos el cierre
+            if en_comentario_bloque:
+                if '*/' in linea:
+                    # Encontramos el final del comentario
+                    parte_final = linea[:linea.index('*/') + 2]
+                    comentario_acumulado += '\n' + parte_final
+                    en_comentario_bloque = False
+                    return [("Comentario", comentario_acumulado)], False, ""
+                else:
+                    # Continuamos en el comentario
+                    comentario_acumulado += '\n' + linea
+                    return [], True, comentario_acumulado
 
-        token_regex = r'(//.*|/\*.*?\*/|".*?"|\'.*?\'|\b[A-Za-z_][A-Za-z0-9_]*\.h\b|\b[A-Za-z_][A-Za-z0-9_]*\b|\b\d+\.\d+|\b\d+\b|[!#\\+<>=\[\]{}();,.-])'
+            # Buscar comentarios de bloque en la línea actual
+            if '/*' in linea and '*/' not in linea:
+                inicio = linea.index('/*')
+                en_comentario_bloque = True
+                comentario_acumulado = linea[inicio:]
+                
+                # Procesar la parte antes del comentario
+                linea_antes = linea[:inicio]
+                if linea_antes.strip():
+                    token_regex = r'(//.*|".*?"|\'.*?\'|\b[A-Za-z_][A-Za-z0-9_]*\.h\b|\b[A-Za-z_][A-Za-z0-9_]*\b|\b\d+\.\d+|\b\d+\b|[!#\\+<>=\[\]{}();,.-])'
+                    tokens_antes = [(clasificar_token(t.strip(), siguiente=None)[0], t.strip()) 
+                                  for t in re.findall(token_regex, linea_antes) if t.strip()]
+                    return tokens_antes, True, comentario_acumulado
+                return [], True, comentario_acumulado
 
-        with open("trad.txt", "w", encoding="utf-8") as file:
-            for line in lines:
-                tokens = re.findall(token_regex, line)
-                tokens = [t.strip() for t in tokens if t.strip()]
-                for i, token in enumerate(tokens):
-                    if token in palabras_reservadas_C:
-                        file.write(f"Palabra_Reservada: {token}\n")
-                    elif token in simbolos:
-                        file.write(f"Simbolo: {token}\n")
-                    elif re.match(r'\d+', token):
-                        file.write(f"Numero: {token}\n")
-                    elif re.match(r'".*?"|\'.*?\'', token):
-                        file.write(f"Cadena: {token}\n")
-                    elif token.endswith('.h'):
-                        file.write(f"Libreria: {token}\n")
-                    elif token.startswith('//') or token.startswith('/*'):
-                        file.write(f"Comentario: {token}\n")
-                    else:
-                        file.write(f"Identificador: {token}\n")
+            # Procesar línea normal
+            token_regex = r'(//.*|/\*.*?\*/|".*?"|\'.*?\'|\b[A-Za-z_][A-Za-z0-9_]*\.h\b|\b[A-Za-z_][A-Za-z0-9_]*\b|\b\d+\.\d+|\b\d+\b|[!#\\+<>=\[\]{}();,.-])'
+            tokens = re.findall(token_regex, linea)
+            tokens = [t.strip() for t in tokens if t.strip()]
+            
+            resultados = []
+            for i, token in enumerate(tokens):
+                siguiente = tokens[i + 1] if i + 1 < len(tokens) else None
+                if '/*' in token and '*/' in token:  # Comentario de bloque en una línea
+                    resultados.append(("Comentario", token))
+                else:
+                    tipo, valor = clasificar_token(token, siguiente)
+                    resultados.append((tipo, valor))
+            
+            return resultados, False, ""
 
-        print("Análisis completado y guardado en trad.txt.")
+        def traducir_codigo(tokens_y_formato):
+            """Traduce el código usando los tokens y la información de formato."""
+            codigo_traducido = []
+            linea_actual = []
+            
+            for item in tokens_y_formato:
+                if isinstance(item, str):  # Es indentación
+                    if linea_actual:
+                        codigo_traducido.append(item + " ".join(linea_actual))
+                        linea_actual = []
+                    elif item:  # Línea vacía con indentación
+                        codigo_traducido.append("")
+                else:  # Es un token
+                    tipo, token = item
+                    if tipo == "Palabra Reservada":
+                        token = PALABRAS_RESERVADAS.get(token, token)
+                    linea_actual.append(token)
+            
+            if linea_actual:  # Procesar última línea si existe
+                codigo_traducido.append(" ".join(linea_actual))
+            
+            return "\n".join(codigo_traducido)
+
+        # Obtener el contenido del editor
+        contenido = self.textEdit.toPlainText()
+        lineas = contenido.splitlines()
+        
+        # Para almacenar tokens y formato para la traducción
+        tokens_y_formato = []
+        # Para almacenar solo los tokens para trad.txt
+        tokens_para_archivo = []
+        
+        # Variables para manejar comentarios de bloque
+        en_comentario_bloque = False
+        comentario_acumulado = ""
+        
+        # Procesar cada línea
+        for linea in lineas:
+            indentacion = " " * (len(linea) - len(linea.lstrip()))
+            tokens_y_formato.append(indentacion)
+            
+            if not linea.strip():
+                continue
+            
+            tokens, en_comentario_bloque, comentario_acumulado = procesar_linea(
+                linea, en_comentario_bloque, comentario_acumulado
+            )
+            
+            if tokens:  # Si hay tokens en la línea
+                tokens_y_formato.extend(tokens)
+                # Agregar tokens al archivo trad.txt
+                for tipo, valor in tokens:
+                    tokens_para_archivo.append(f"{tipo}: {valor}")
+                tokens_para_archivo.append("")  # Línea vacía entre líneas de código
+        
+        # Guardar análisis en trad.txt (solo tokens)
+        with open("trad.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(tokens_para_archivo).rstrip())
+        
+        # Generar y guardar código traducido
+        codigo_traducido = traducir_codigo(tokens_y_formato)
+        with open("traduccion.c", "w", encoding="utf-8") as f:
+            f.write(codigo_traducido)
+        
+        print("Análisis y traducción completados correctamente.")
 
     def new_content(self):
         """Limpia el área de texto del editor de código y resetea la referencia al archivo actual."""
