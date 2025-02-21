@@ -1,0 +1,115 @@
+def analize_content(self):
+        """Analiza el contenido del editor línea por línea y guarda los resultados en traduccion.txt."""
+        import re
+        content = self.textEdit.toPlainText()
+        lines = content.splitlines()
+        
+        # ... (mantener todas las definiciones de listas y variables previas) ...
+        
+        # Almacenar información sobre el formato original
+        formato_original = []
+        for line in lines:
+            # Guardar la indentación
+            leading_spaces = len(line) - len(line.lstrip())
+            formato_original.append({
+                'indentacion': ' ' * leading_spaces,
+                'es_vacia': not line.strip(),
+                'linea_original': line
+            })
+        
+        # Limpiar y escribir en trad.txt
+        with open("trad.txt", "w", encoding="utf-8") as file:
+            for i, line in enumerate(lines):
+                if not line.strip():
+                    continue
+                    
+                if en_comentario_multibloque:
+                    comentario_multibloque_acumulado += f"\n{line}"
+                    if re.search(r'\*/', line):
+                        en_comentario_multibloque = False
+                        file.write(f"Comentario: {comentario_multibloque_acumulado.strip()}\n")
+                    continue
+                    
+                if re.search(r'/\*', line) and not re.search(r'\*/', line):
+                    en_comentario_multibloque = True
+                    comentario_multibloque_acumulado = line
+                    continue
+                
+                # Procesar tokens
+                tokens = re.findall(token_regex, line)
+                tokens = [t.strip() for t in tokens if t.strip()]
+                
+                for i in range(len(tokens)):
+                    token = tokens[i]
+                    siguiente_token = tokens[i + 1] if i + 1 < len(tokens) else None
+                    
+                    if token:  # Ignorar tokens vacíos
+                        clasificacion, token_limpio = clasificar_token(token, siguiente_token)
+                        file.write(f"{clasificacion}: {token_limpio}\n")
+
+        print("Análisis completado y guardado en trad.txt.")
+
+        def traducir_codigo():
+            """Lee trad.txt y genera una versión traducida del código."""
+            tokens_traducidos = []
+            linea_actual = []
+            indentacion_actual = 0
+            
+            try:
+                # Leer el código original para obtener el formato
+                codigo_original = content.splitlines()
+                
+                # Leer y procesar los tokens
+                with open("trad.txt", "r", encoding="utf-8") as file:
+                    lineas_tokens = file.readlines()
+                
+                # Procesar cada línea del código original
+                for i, linea_original in enumerate(codigo_original):
+                    if not linea_original.strip():
+                        tokens_traducidos.append("")
+                        continue
+                        
+                    # Obtener la indentación de la línea original
+                    indentacion = len(linea_original) - len(linea_original.lstrip())
+                    linea_actual = []
+                    
+                    # Buscar los tokens correspondientes a esta línea
+                    while lineas_tokens and len(lineas_tokens) > 0:
+                        token_line = lineas_tokens[0].strip()
+                        if not token_line:
+                            lineas_tokens.pop(0)
+                            continue
+                            
+                        clasificacion, token = token_line.split(": ", 1)
+                        
+                        # Traducir según la clasificación
+                        if clasificacion == "Palabra Reservada":
+                            token_traducido = dicc_palabras_reservadas.get(token, token)
+                        elif clasificacion == "Identificador de Funcion":
+                            token_traducido = token
+                        else:
+                            token_traducido = token
+                            
+                        linea_actual.append(token_traducido)
+                        lineas_tokens.pop(0)
+                        
+                        # Si encontramos un comentario, es el final de la línea
+                        if clasificacion == "Comentario":
+                            break
+                            
+                    # Agregar la línea traducida con su indentación original
+                    if linea_actual:
+                        linea_traducida = " " * indentacion + " ".join(linea_actual)
+                        tokens_traducidos.append(linea_traducida)
+                
+                # Escribir el código traducido
+                with open("codigo_traducido.c", "w", encoding="utf-8") as file:
+                    file.write("\n".join(tokens_traducidos))
+                
+                print("Traducción completada y guardada en codigo_traducido.c")
+            
+            except Exception as e:
+                print(f"Error durante la traducción: {str(e)}")
+        
+        # Llamar a la función de traducción después del análisis
+        traducir_codigo()

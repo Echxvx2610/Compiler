@@ -1,0 +1,22 @@
+Simbolo: #
+Palabra Reservada: include
+Simbolo: <
+Libreria: stdio.h
+Simbolo: >
+Comentario: // Incluir la librería estándar
+Palabra Reservada: int
+Identificador de Funcion: main
+Simbolo: (
+Simbolo: )
+Simbolo: {
+Comentario: // Imprimir "Hello, World!" en la consola
+Identificador de Funcion: printf
+Simbolo: (
+Cadena: "Hello, World!\n"
+Simbolo: )
+Simbolo: ;
+Palabra Reservada: return
+Numero: 0
+Simbolo: ;
+Comentario: // Retorna 0
+Simbolo: }
