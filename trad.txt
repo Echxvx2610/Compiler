@@ -10,107 +10,28 @@ Simbolo: (
 Simbolo: )
 Simbolo: {
 
-Palabra Reservada: int
-Identificador: dia
-Simbolo: =
-Numero: 3
-Simbolo: ;
-
-Palabra Reservada: switch
+Palabra Reservada: for
 Simbolo: (
-Identificador: dia
+Palabra Reservada: int
+Identificador: i
+Simbolo: =
+Numero: 0
+Simbolo: ;
+Identificador: i
+Simbolo: <
+Numero: 5
+Simbolo: ;
+Identificador: i
+Simbolo: +
+Simbolo: +
 Simbolo: )
 Simbolo: {
 
-Palabra Reservada: case
-Numero: 1
-
 Identificador de Funcion: printf
 Simbolo: (
-Cadena: "Lunes\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: case
-Numero: 2
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Martes\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: case
-Numero: 3
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Miércoles\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: case
-Numero: 4
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Jueves\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: case
-Numero: 5
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Viernes\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: case
-Numero: 6
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Sábado\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: case
-Numero: 7
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Domingo\n"
-Simbolo: )
-Simbolo: ;
-
-Palabra Reservada: break
-Simbolo: ;
-
-Palabra Reservada: default
-
-Identificador de Funcion: printf
-Simbolo: (
-Cadena: "Número de día inválido\n"
+Cadena: "El valor de i es: %d\n"
+Simbolo: ,
+Identificador: i
 Simbolo: )
 Simbolo: ;
 

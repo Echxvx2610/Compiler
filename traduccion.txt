@@ -1,6 +1,8 @@
-entero main ( ) {
-// Imprime "Hello, World!" en la consola
-printf ( "Hello, World!\n" ) ;
-// Retorna 0 para indicar que el programa terminó correctamente
+# incluir < stdio.h >
+    entero main ( ) {
+        para ( entero i = 0 ; i < 5 ; i + + ) {
+    printf ( "El valor de i es: %d\n" , i ) ;
+}
+
 retornar 0 ;
 }

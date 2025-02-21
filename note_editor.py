@@ -323,8 +323,6 @@ class NoteEditor(QMainWindow):
             Procesa una línea de código y retorna sus tokens clasificados.
             También maneja el estado de los comentarios de bloque.
             """
-            import re
-            
             # Si estamos en un comentario de bloque, buscamos el cierre
             if en_comentario_bloque:
                 if '*/' in linea:
@@ -430,7 +428,7 @@ class NoteEditor(QMainWindow):
         
         # Generar y guardar código traducido
         codigo_traducido = traducir_codigo(tokens_y_formato)
-        with open("traduccion.c", "w", encoding="utf-8") as f:
+        with open("traduccion.txt", "w", encoding="utf-8") as f:
             f.write(codigo_traducido)
         
         print("Análisis y traducción completados correctamente.")
