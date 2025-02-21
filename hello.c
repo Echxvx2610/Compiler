@@ -1,8 +1,9 @@
-#include <stdio.h>  // Incluir la librería estándar
+#include <stdio.h>
 
 int main() {
-    // Imprimir "Hello, World!" en la consola
+    // Imprime "Hello, World!" en la consola
     printf("Hello, World!\n");
-    
-    return 0;  // Retorna 0
+
+    // Retorna 0 para indicar que el programa terminó correctamente
+    return 0;
 }
