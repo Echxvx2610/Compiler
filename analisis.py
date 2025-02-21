@@ -22,7 +22,7 @@ class AnalizadorC:
 
             simbolos = ['#', '<', '>', '(', ')', '{', '}', ';', ',', '.', '+', '-', '*', '/', '=', '[', ']']
 
-            token_regex = r'(//.*|/\*.*?\*/|\".*?\"|\'.*?\'|\b[A-Za-z_][A-Za-z0-9_]*\.h\b|\b[A-Za-z_][A-Za-z0-9_]*\b|\b\d+\.\d+|\b\d+\b|[!#\\+<>=\[\]{}();,.-])'
+            token_regex = r'(//.*|/\*.*?\*/|\".*?\"|\'.*?\'|\#include\s*<.*?>|\b[A-Za-z_][A-Za-z0-9_]*\.h\b|\b[A-Za-z_][A-Za-z0-9_]*\b|\b\d+\.\d+|\b\d+\b|[!#\\+<>=\[\]{}();,.-])'
 
             with open("trad.txt", "w", encoding="utf-8") as file:
                 for line in lines:
@@ -37,7 +37,7 @@ class AnalizadorC:
                             file.write(f"Numero: {token}\n")
                         elif re.match(r'\".*?\"|\'.*?\'', token):
                             file.write(f"Cadena: {token}\n")
-                        elif token.endswith('.h'):
+                        elif re.match(r'\#include\s*<.*?>', token):
                             file.write(f"Libreria: {token}\n")
                         elif token.startswith('//') or token.startswith('/*'):
                             file.write(f"Comentario: {token}\n")
@@ -81,11 +81,19 @@ class AnalizadorC:
                 if tipo == "Palabra_Reservada":
                     linea_actual += dicc_palabras_reservadas.get(token, token) + " "
                 elif tipo == "Comentario":
-                    linea_actual += token + "\n"  # Agregar comentario al final de la línea
+                    if linea_actual.strip():
+                        codigo_traducido.append(linea_actual.strip())
+                        linea_actual = ""
+                    codigo_traducido.append(token)  # Agregar comentario tal cual
                 elif tipo == "Simbolo" and token in [";", "{", "}", ")", ">", "]"]:
                     linea_actual = linea_actual.rstrip() + " " + token + " "
                 elif tipo == "Simbolo":
                     linea_actual += token + " "
+                elif tipo == "Libreria":
+                    if linea_actual.strip():
+                        codigo_traducido.append(linea_actual.strip())
+                        linea_actual = ""
+                    codigo_traducido.append(token)  # Agregar librería tal cual
                 else:
                     linea_actual += token + " "
 
@@ -106,85 +114,6 @@ class AnalizadorC:
         except Exception as e:
             print(f"Error al generar la traducción: {str(e)}")
 
-
-# class TraductorC:
-#     def __init__(self):
-#         self.tokens = (
-#             'PALABRA_RESERVADA', 'SIMBOLO', 'NUMERO', 'CADENA', 'LIBRERIA', 'COMENTARIO', 'IDENTIFICADOR'
-#         )
-
-#         self.dicc_palabras_reservadas = {
-#             "auto": "automatico", "break": "romper", "case": "caso", "char": "caracter",
-#             "const": "constante", "continue": "continuar", "default": "defecto", "do": "hacer",
-#             "double": "doble", "else": "sino", "enum": "enumeracion", "extern": "externo",
-#             "float": "flotante", "for": "para", "goto": "ir_a", "if": "si", "inline": "en_linea",
-#             "int": "entero", "long": "largo", "register": "registro", "restrict": "restringido",
-#             "return": "retornar", "short": "corto", "signed": "con_signo", "sizeof": "tamaño_de",
-#             "static": "estatico", "struct": "estructura", "switch": "selector", "typedef": "definir_tipo",
-#             "union": "union", "unsigned": "sin_signo", "void": "vacio", "volatile": "volatil",
-#             "while": "mientras", "include": "incluir"
-#         }
-
-#         self.lexer = lex.lex(module=self)
-
-#     t_ignore = ' \t'
-
-#     def t_PALABRA_RESERVADA(self, t):
-#         r'Palabra_Reservada: .*'
-#         token = t.value.split(': ')[1]
-#         t.value = self.dicc_palabras_reservadas.get(token, token)
-#         return t
-
-#     def t_SIMBOLO(self, t):
-#         r'Simbolo: .*'
-#         t.value = t.value.split(': ')[1]
-#         return t
-
-#     def t_NUMERO(self, t):
-#         r'Numero: .*'
-#         t.value = t.value.split(': ')[1]
-#         return t
-
-#     def t_CADENA(self, t):
-#         r'Cadena: .*'
-#         t.value = t.value.split(': ')[1]
-#         return t
-
-#     def t_LIBRERIA(self, t):
-#         r'Libreria: .*'
-#         t.value = t.value.split(': ')[1]
-#         return t
-
-#     def t_COMENTARIO(self, t):
-#         r'Comentario: .*'
-#         t.value = t.value.split(': ')[1]
-#         return t
-
-#     def t_IDENTIFICADOR(self, t):
-#         r'Identificador: .*'
-#         t.value = t.value.split(': ')[1]
-#         return t
-
-#     def t_error(self, t):
-#         print(f"Caracter ilegal: {t.value[0]}")
-#         t.lexer.skip(1)
-
-#     def traducir(self):
-#         """Lee trad.txt y genera traduccion.txt usando PLY."""
-#         with open("trad.txt", "r", encoding="utf-8") as file:
-#             data = file.read()
-
-#         self.lexer.input(data)
-
-#         with open("traduccion.txt", "w", encoding="utf-8") as out_file:
-#             while True:
-#                 tok = self.lexer.token()
-#                 if not tok:
-#                     break
-#                 out_file.write(f"{tok.type}: {tok.value}\n")
-
-#         print("Traducción completada y guardada en traduccion.txt.")
-import ply.lex as lex
 
 class TraductorC:
     def __init__(self):
@@ -230,7 +159,7 @@ class TraductorC:
         return t
 
     def t_LIBRERIA(self, t):
-        r'Libreria: \# incluir < .* >'
+        r'Libreria: \#include\s*<.*?>'
         t.value = t.value.split(': ')[1]
         return t
 
@@ -291,7 +220,7 @@ class TraductorC:
                 if linea_actual.strip():
                     codigo_traducido.append(linea_actual.strip())
                     linea_actual = ""
-                codigo_traducido.append(f"# {tok.value}")  # Agregar la librería con un salto de línea
+                codigo_traducido.append(tok.value)  # Agregar la librería con un salto de línea
             else:
                 # Otros tipos (números, cadenas, identificadores)
                 linea_actual += tok.value + " "

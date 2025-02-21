@@ -1,0 +1,17 @@
+Libreria: #include <stdio.h>
+Palabra_Reservada: int
+Identificador: main
+Simbolo: (
+Simbolo: )
+Simbolo: {
+Comentario: // Imprime "Hello, World!" en la consola
+Identificador: printf
+Simbolo: (
+Cadena: "Hello, World!\n"
+Simbolo: )
+Simbolo: ;
+Comentario: // Retorna 0 para indicar que el programa terminó correctamente
+Palabra_Reservada: return
+Numero: 0
+Simbolo: ;
+Simbolo: }
