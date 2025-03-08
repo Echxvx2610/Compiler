@@ -305,8 +305,10 @@ class NoteEditor(QMainWindow):
                 return "Comentario", token
             elif token in PALABRAS_RESERVADAS:
                 return "Palabra Reservada", token
-            elif token.endswith('.h'):
+            elif token.endswith('.h') and not token.startswith('"'):
                 return "Libreria", token
+            elif token.startswith('"') and token.endswith('.h"'):
+                return "Libreria Personalizada", token
             elif token in SIMBOLOS:
                 return "Simbolo", token
             elif token.startswith('"') or token.startswith("'"):
@@ -317,6 +319,8 @@ class NoteEditor(QMainWindow):
                 return "Identificador de Funcion", token
             else:
                 return "Identificador", token
+
+
 
         def procesar_linea(linea, en_comentario_bloque, comentario_acumulado):
             """

@@ -1,44 +1,27 @@
+Comentario: // miLibreria.c
+
+Simbolo: #
+Palabra Reservada: include
+Libreria Personalizada: "miLibreria.h"
+
 Simbolo: #
 Palabra Reservada: include
 Simbolo: <
 Libreria: stdio.h
 Simbolo: >
 
-Palabra Reservada: int
-Identificador de Funcion: main
-Simbolo: (
-Simbolo: )
-Simbolo: {
+Comentario: // Definición de la función
 
-Palabra Reservada: for
+Palabra Reservada: void
+Identificador de Funcion: saludar
 Simbolo: (
-Palabra Reservada: int
-Identificador: i
-Simbolo: =
-Numero: 0
-Simbolo: ;
-Identificador: i
-Simbolo: <
-Numero: 5
-Simbolo: ;
-Identificador: i
-Simbolo: +
-Simbolo: +
 Simbolo: )
 Simbolo: {
 
 Identificador de Funcion: printf
 Simbolo: (
-Cadena: "El valor de i es: %d\n"
-Simbolo: ,
-Identificador: i
+Cadena: "¡Hola desde mi librería!\n"
 Simbolo: )
-Simbolo: ;
-
-Simbolo: }
-
-Palabra Reservada: return
-Numero: 0
 Simbolo: ;
 
 Simbolo: }

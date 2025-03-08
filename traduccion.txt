@@ -1,8 +1,7 @@
+// miLibreria.c
+# incluir "miLibreria.h"
 # incluir < stdio.h >
-    entero main ( ) {
-        para ( entero i = 0 ; i < 5 ; i + + ) {
-    printf ( "El valor de i es: %d\n" , i ) ;
-}
-
-retornar 0 ;
+// Definición de la función
+    vacio saludar ( ) {
+printf ( "¡Hola desde mi librería!\n" ) ;
 }
