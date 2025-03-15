@@ -1,7 +1,0 @@
-// miLibreria.c
-# incluir "miLibreria.h"
-# incluir < stdio.h >
-// Definición de la función
-    vacio saludar ( ) {
-printf ( "¡Hola desde mi librería!\n" ) ;
-}

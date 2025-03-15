@@ -1,8 +1,8 @@
-// miLibreria.c
+// miLibreria.h
 #include "miLibreria.h"
 #include <stdio.h>
 
-// Definición de la función
-void saludar() {
-    printf("¡Hola desde mi librería!\n");
+int main() {
+    printf("Hello, World!\n");
+    return 0;
 }
