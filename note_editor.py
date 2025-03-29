@@ -414,19 +414,22 @@ class NoteEditor(QMainWindow):
             i = 0
             while i < len(tokens):
                 tipo, token, linea_num = tokens[i]
-                
+
                 # Detectar identificadores de función
                 if tipo == "Identificador" and i < len(tokens) - 1 and tokens[i+1][1] == '(':
                     # Verificar si hay un tipo de dato antes
                     if i > 0 and (tokens[i-1][0] in ["Tipo_Dato"] or tokens[i-1][1] in TIPOS_DATOS):
                         tokens_finales.append(("Identificador_Funcion", token, linea_num))
+                        #Marcar Main.
+                        if token == "main":
+                            tokens_finales.append(("Main_Function", token, linea_num))
                     else:
                         tokens_finales.append(("Llamada_Funcion", token, linea_num))
                 else:
                     tokens_finales.append((tipo, token, linea_num))
-                
+
                 i += 1
-            
+
             return tokens_finales, False, "", errores_linea
 
         def clasificar_token_especifico(tipo_inicial, token, PALABRAS_RESERVADAS, SIMBOLOS, TIPOS_DATOS):
@@ -472,7 +475,8 @@ class NoteEditor(QMainWindow):
 
         def verificar_errores_tokens(tokens):
             """
-            Verifica errores específicos para cada tipo de token.
+            Verifica errores específicos para cada tipo de token, rastreando la posición exacta
+            de cada llave de apertura para detectar errores de sintaxis con mayor precisión.
             Retorna una lista de errores encontrados.
             """
             errores = []
@@ -482,332 +486,106 @@ class NoteEditor(QMainWindow):
             # Rastrear el ámbito actual usando una pila
             ambitos = [set()]  # Lista de conjuntos de variables
             
-            # Rastrear bloques de código
-            nivel_bloque = 0
-            bloques_anidados = []  # Para rastrear if, for, while, etc.
+            # Estructura para rastrear bloques de control y funciones
+            bloques_esperando_llave = []  # (tipo, token, num_linea)
             
-            # Verificar si hay bloques abiertos correctamente
-            bloques_abiertos = 0
-            parentesis_abiertos = 0
-            corchetes_abiertos = 0
+            # Para rastrear estructuras anidadas
+            estructuras_control = ["if", "else", "while", "for", "switch", "do"]
+            
+            # Pila para rastrear la posición exacta de cada llave de apertura
+            # Cada elemento es (num_linea, contexto)
+            llaves_apertura = []  # [(linea, contexto), ...]
             
             # Verificar si estamos dentro de una declaración
             en_declaracion = False
             tipo_actual = None
             
+            # Agregar funciones estándar de C
+            funciones_declaradas.update(["printf", "scanf", "main"])
+            
+            # Para verificar si un token es parte de una declaración de función
+            posible_funcion = False
+            en_condicion = False
+            
             i = 0
             while i < len(tokens):
                 tipo, token, num_linea = tokens[i]
                 
-                # Verificar apertura y cierre de bloques
-                if token == '{':
-                    bloques_abiertos += 1
-                    # Crear un nuevo ámbito
-                    ambitos.append(set())
-                elif token == '}':
-                    bloques_abiertos -= 1
-                    if bloques_abiertos < 0:
-                        errores.append(f"Error en Linea {num_linea}: Llave de cierre '}}' sin llave de apertura correspondiente")
-                    elif ambitos:
-                        # Eliminar el ámbito actual
-                        ambitos.pop()
+                # Verificar estructuras de control
+                if token in estructuras_control and tipo == "Palabra_Reservada":
+                    bloques_esperando_llave.append((tipo, token, num_linea))
+                    en_condicion = True
                 
-                # Verificar paréntesis
+                # Verificar paréntesis para condiciones
                 elif token == '(':
-                    parentesis_abiertos += 1
+                    # Solo llevamos conteo del nivel de anidamiento
+                    if i > 0 and i < len(tokens) - 1:
+                        # Buscar el token anterior para contexto
+                        contexto = tokens[i-1][1] if i > 0 else ""
                 elif token == ')':
-                    parentesis_abiertos -= 1
-                    if parentesis_abiertos < 0:
-                        errores.append(f"Error en Linea {num_linea}: Paréntesis de cierre ')' sin paréntesis de apertura correspondiente")
+                    if en_condicion:
+                        # Terminó la condición, ahora esperamos una llave
+                        en_condicion = False
                 
-                # Verificar corchetes
-                elif token == '[':
-                    corchetes_abiertos += 1
-                elif token == ']':
-                    corchetes_abiertos -= 1
-                    if corchetes_abiertos < 0:
-                        errores.append(f"Error en Linea {num_linea}: Corchete de cierre ']' sin corchete de apertura correspondiente")
-                        
-                # Verificar directivas de preprocesador (#include)
-                elif token == '#':
-                    if i + 1 < len(tokens):
-                        siguiente_tipo, siguiente_token, _ = tokens[i + 1]
-                        if siguiente_token != "include":
-                            errores.append(f"Error en Linea {num_linea}: Se espera 'include' después de '#'")
-                        else:
-                            # Verificar formato correcto del include
-                            if i + 2 < len(tokens):
-                                if tokens[i+2][0] not in ["Libreria", "Libreria_Personalizada"] and tokens[i+2][1] not in ['<', '"']:
-                                    errores.append(f"Error en Linea {num_linea}: Formato incorrecto después de '#include'")
-                    else:
-                        errores.append(f"Error en Linea {num_linea}: Directiva de preprocesador incompleta")
-                
-                # Verificar palabras reservadas
-                elif tipo == "Palabra_Reservada":
-                    # Estructura de control
-                    if token in ["if", "for", "while", "switch"]:
-                        # Verificar que haya un paréntesis después
-                        if i + 1 >= len(tokens) or tokens[i+1][1] != '(':
-                            errores.append(f"Error en Linea {num_linea}: Falta paréntesis después de '{token}'")
-                        bloques_anidados.append(token)
-                    
-                    # Verificar else
-                    elif token == "else":
-                        # Debe estar precedido por un bloque if
-                        if not bloques_anidados or bloques_anidados[-1] != "if":
-                            errores.append(f"Error en Linea {num_linea}: 'else' sin 'if' correspondiente")
-                        
-                        # Verificar si hay un 'if' después (else if)
-                        if i + 1 < len(tokens) and tokens[i+1][1] == "if":
-                            pass  # Esto es correcto (else if)
-                        elif i + 1 < len(tokens) and tokens[i+1][1] != "{":
-                            # Debería haber una llave o un 'if' después de else
-                            errores.append(f"Error en Linea {num_linea}: Se espera '{{' o 'if' después de 'else'")
-                    
-                    # Verificar return
-                    elif token == "return":
-                        # Verificar que haya un punto y coma después
-                        j = i + 1
-                        while j < len(tokens) and tokens[j][1] != ';':
-                            j += 1
-                        if j >= len(tokens):
-                            errores.append(f"Error en Linea {num_linea}: Falta punto y coma después de 'return'")
-                
-                # Verificar tipos de datos (para declaraciones)
+                # Verificar posibles declaraciones de función
                 elif tipo == "Tipo_Dato" or token in TIPOS_DATOS:
                     en_declaracion = True
                     tipo_actual = token
+                    posible_funcion = True
                 
-                # Verificar identificadores (variables)
-                elif tipo == "Identificador":
-                    # Variables en declaración
-                    if en_declaracion:
-                        if token in [t for ambito in ambitos for t in ambito]:
-                            errores.append(f"Error en Linea {num_linea}: Variable '{token}' ya ha sido declarada en este ámbito")
-                        else:
-                            # Añadir al ámbito actual
-                            if ambitos:
-                                ambitos[-1].add(token)
-                            variables_declaradas.add(token)
-                        
-                        # Verificar inicialización
-                        if i + 1 < len(tokens) and tokens[i+1][1] == '=':
-                            # Verificar el valor después del signo igual
-                            if i + 2 < len(tokens):
-                                valor_tipo, valor, _ = tokens[i+2]
-                                if valor_tipo not in ["Entero", "Decimal", "Cadena", "Caracter", "Identificador"]:
-                                    errores.append(f"Error en Linea {num_linea}: Valor inválido para inicialización de variable '{token}'")
-                        
-                        # Verificar punto y coma al final de la declaración
-                        j = i + 1
-                        while j < len(tokens) and tokens[j][1] not in [';', ',']:
-                            j += 1
-                        if j >= len(tokens) or tokens[j][1] not in [';', ',']:
-                            errores.append(f"Error en Linea {num_linea}: Falta punto y coma o coma en la declaración de '{token}'")
-                    
-                    # Variables en uso
-                    else:
-                        # Verificar si la variable ha sido declarada
-                        if token not in variables_declaradas and token not in [t for ambito in ambitos for t in ambito]:
-                            errores.append(f"Error en Linea {num_linea}: Variable '{token}' usada sin declarar previamente")
-                
-                # Verificar identificadores de función
-                elif tipo == "Identificador_Funcion":
-                    funciones_declaradas.add(token)
-                    
-                    # Verificar parámetros dentro de los paréntesis
+                # Verificar identificadores que podrían ser funciones
+                elif tipo == "Identificador" and posible_funcion:
                     if i + 1 < len(tokens) and tokens[i+1][1] == '(':
-                        # Recorrer hasta el paréntesis de cierre
-                        nivel = 1
-                        j = i + 2
-                        
-                        # Lista para almacenar parámetros
-                        parametros = []
-                        param_actual = []
-                        
-                        while j < len(tokens) and nivel > 0:
-                            if tokens[j][1] == '(':
-                                nivel += 1
-                            elif tokens[j][1] == ')':
-                                nivel -= 1
-                                if nivel == 0:
-                                    # Añadir el último parámetro si hay algo
-                                    if param_actual:
-                                        parametros.append(param_actual)
-                            elif tokens[j][1] == ',' and nivel == 1:
-                                # Fin del parámetro actual
-                                parametros.append(param_actual)
-                                param_actual = []
-                            else:
-                                # Añadir a parámetro actual
-                                param_actual.append(tokens[j])
-                            
-                            j += 1
-                        
-                        # Verificar cada parámetro
-                        for param in parametros:
-                            # Debe tener un tipo y un nombre
-                            if len(param) < 2:
-                                errores.append(f"Error en Linea {num_linea}: Parámetro incompleto en función '{token}'")
-                            elif param[0][0] != "Tipo_Dato" and param[0][1] not in TIPOS_DATOS:
-                                errores.append(f"Error en Linea {num_linea}: Parámetro sin tipo en función '{token}'")
-                
-                # Verificar llamadas a funciones
-                elif tipo == "Llamada_Funcion":
-                    if token not in funciones_declaradas and token not in FUNCIONES_BIBLIOTECA:
-                        errores.append(f"Error en Linea {num_linea}: Función '{token}' llamada sin declarar")
-                    
-                    # Verificar punto y coma después de la llamada
-                    # Encontrar el paréntesis de cierre
-                    nivel = 0
-                    j = i
-                    while j < len(tokens):
-                        if tokens[j][1] == '(':
-                            nivel += 1
-                        elif tokens[j][1] == ')':
-                            nivel -= 1
-                            if nivel == 0:
-                                break
-                        j += 1
-                    
-                    # Después del paréntesis de cierre debe haber punto y coma
-                    if j < len(tokens) - 1 and tokens[j+1][1] != ';':
-                        errores.append(f"Error en Linea {tokens[j][2]}: Falta punto y coma ';' después de la llamada a función '{token}'")
-                
-                # Verificar expresiones con operadores
-                elif token in ['+', '-', '*', '/', '=']:
-                    # Verificar que haya operandos a ambos lados
-                    if i == 0 or i == len(tokens) - 1:
-                        errores.append(f"Error en Linea {num_linea}: Operador '{token}' sin operandos suficientes")
+                        # Esto es una declaración de función
+                        bloques_esperando_llave.append(("Funcion", token, num_linea))
+                        funciones_declaradas.add(token)
+                    # También manejar el caso de una variable
                     else:
-                        izq_tipo, izq_token, _ = tokens[i-1]
-                        
-                        # El lado izquierdo debe ser un identificador, número o resultado de expresión
-                        if izq_tipo not in ["Identificador", "Entero", "Decimal", "Caracter"] and izq_token != ')':
-                            errores.append(f"Error en Linea {num_linea}: Expresión inválida: operando izquierdo de '{token}' no es válido")
-                        
-                        # Verificar el lado derecho si no estamos al final
-                        if i < len(tokens) - 1:
-                            der_tipo, der_token, _ = tokens[i+1]
-                            if der_tipo not in ["Identificador", "Entero", "Decimal", "Caracter", "Cadena"] and der_token not in ['(', '+', '-']:
-                                errores.append(f"Error en Linea {num_linea}: Expresión inválida: operando derecho de '{token}' no es válido")
+                        variables_declaradas.add(token)
+                    
+                    posible_funcion = False
                 
-                # Verificar errores de sintaxis de cadenas
-                elif tipo == "Cadena_Error":
-                    errores.append(f"Error en Linea {num_linea}: Cadena sin cerrar: {token}")
+                # Verificar apertura de bloques
+                elif token == '{':
+                    # Determinar el contexto de esta llave
+                    contexto = "desconocido"
+                    if bloques_esperando_llave:
+                        tipo_bloque, token_bloque, _ = bloques_esperando_llave.pop()
+                        contexto = token_bloque
+                    
+                    # Guardar posición y contexto de la llave
+                    llaves_apertura.append((num_linea, contexto))
+                    
+                    # Crear un nuevo ámbito
+                    ambitos.append(set())
                 
-                # Verificar errores de sintaxis de caracteres
-                elif tipo == "Caracter_Error":
-                    errores.append(f"Error en Linea {num_linea}: Caracter mal formado: {token}")
+                # Verificar cierre de bloques
+                elif token == '}':
+                    if llaves_apertura:
+                        # Eliminar la llave de apertura correspondiente
+                        llaves_apertura.pop()
+                        if ambitos:
+                            ambitos.pop()
+                    else:
+                        errores.append(f"Error en Linea {num_linea}: Llave de cierre '}}' sin llave de apertura correspondiente")
                 
-                # Verificar punto y coma al final de sentencias
+                # Resetear condiciones con punto y coma
                 if token == ';':
                     en_declaracion = False
                     tipo_actual = None
+                    posible_funcion = False
                 
                 i += 1
             
-            # Verificar estructuras no cerradas al final
-            if bloques_abiertos > 0:
-                errores.append(f"Error: Hay {bloques_abiertos} llaves '{{' sin cerrar")
-            if parentesis_abiertos > 0:
-                errores.append(f"Error: Hay {parentesis_abiertos} paréntesis '(' sin cerrar")
-            if corchetes_abiertos > 0:
-                errores.append(f"Error: Hay {corchetes_abiertos} corchetes '[' sin cerrar")
+            # Verificar si quedaron estructuras sin su correspondiente bloque
+            if bloques_esperando_llave:
+                for _, token_bloque, num_linea in bloques_esperando_llave:
+                    errores.append(f"Error en Linea {num_linea}: Estructura '{token_bloque}' sin llave de apertura correspondiente")
             
-            return errores
-
-        def verificar_estructura_sintactica(tokens):
-            """
-            Verifica la estructura sintáctica del código (llaves, paréntesis, punto y coma).
-            Retorna una lista de errores encontrados.
-            """
-            errores = []
-            balance_llaves = 0
-            balance_parentesis = 0
-            espera_punto_y_coma = False
-            
-            i = 0
-            while i < len(tokens):
-                tipo, token, num_linea = tokens[i]
-                
-                # Ignorar comentarios
-                if tipo == "Comentario":
-                    i += 1
-                    continue
-                    
-                # Verificar balance de llaves
-                if token == '{':
-                    balance_llaves += 1
-                    espera_punto_y_coma = False  # Resetear después de una llave
-                elif token == '}':
-                    balance_llaves -= 1
-                    espera_punto_y_coma = False  # Resetear después de una llave
-                    if balance_llaves < 0:
-                        errores.append(f"Error en Linea {num_linea}: Llave de cierre '}}' sin llave de apertura correspondiente")
-                        balance_llaves = 0  # Restablecer para evitar errores en cascada
-                
-                # Verificar balance de paréntesis
-                if token == '(':
-                    balance_parentesis += 1
-                elif token == ')':
-                    balance_parentesis -= 1
-                    if balance_parentesis < 0:
-                        errores.append(f"Error en Linea {num_linea}: Paréntesis de cierre ')' sin paréntesis de apertura correspondiente")
-                        balance_parentesis = 0  # Restablecer para evitar errores en cascada
-                
-                # Mejorar detección de punto y coma faltante
-                # Verificación especial para return
-                if token == "return":
-                    # Buscar si hay punto y coma después de la expresión de return
-                    encontrado_punto_y_coma = False
-                    j = i + 1
-                    while j < len(tokens) and tokens[j][1] not in [';', '{', '}']:
-                        j += 1
-                    
-                    if j < len(tokens) and tokens[j][1] == ';':
-                        encontrado_punto_y_coma = True
-                    
-                    if not encontrado_punto_y_coma:
-                        errores.append(f"Error en Linea {num_linea}: Falta punto y coma ';' después de la expresión 'return'")
-                
-                # Verificar si necesita punto y coma
-                if espera_punto_y_coma:
-                    if token != ';' and token != '{' and token != '}':
-                        # Solo verificar al final de una instrucción
-                        if i + 1 < len(tokens):
-                            siguiente_token = tokens[i+1][1]
-                            if siguiente_token in ['{', '}']:
-                                # Estamos al final de una instrucción
-                                errores.append(f"Error en Linea {num_linea}: Falta punto y coma ';' después de '{token}'")
-                    espera_punto_y_coma = False
-                
-                # Después de declaraciones de variables o expresiones
-                if tipo in ["Identificador", "Entero", "Decimal", "Cadena", "Caracter","Identificador de Funcion"]:
-                    if i + 1 < len(tokens):
-                        siguiente_token = tokens[i+1][1]
-                        if siguiente_token not in [';', ',', ')', ']', '+', '-', '*', '/', '=']:
-                            espera_punto_y_coma = True
-                
-                # Verificar estructuras de control
-                if tipo == "Palabra Reservada":
-                    if token in ["if", "while", "for", "switch"]:
-                        # Verificar que después venga un paréntesis
-                        if i + 1 >= len(tokens) or tokens[i+1][1] != '(':
-                            errores.append(f"Error en Linea {num_linea}: Falta paréntesis '(' después de '{token}'")
-                    
-                    elif token in ["else"]:
-                        # Verificar que después venga un if o una llave
-                        if i + 1 < len(tokens) and tokens[i+1][1] != 'if' and tokens[i+1][1] != '{':
-                            errores.append(f"Error en Linea {num_linea}: Se espera 'if' o '{{' después de 'else'")
-                
-                i += 1
-            
-            # Verificar balance final de llaves y paréntesis
-            if balance_llaves > 0:
-                errores.append(f"Error: Faltan {balance_llaves} llaves de cierre '}}'")
-            if balance_parentesis > 0:
-                errores.append(f"Error: Faltan {balance_parentesis} paréntesis de cierre ')'")
+            # Verificar si quedaron llaves de apertura sin cerrar
+            if llaves_apertura:
+                for num_linea, contexto in llaves_apertura:
+                    errores.append(f"Error en Linea {num_linea}: Llave de apertura '{{' sin llave de cierre correspondiente (en '{contexto}')")
             
             return errores
 
@@ -868,12 +646,8 @@ class NoteEditor(QMainWindow):
         # Realizar análisis de errores específicos por tipo de token
         errores_tokens = verificar_errores_tokens(todos_los_tokens)
         todos_los_errores.extend(errores_tokens)
-        
-        # Realizar análisis de estructura sintáctica
-        errores_estructura = verificar_estructura_sintactica(todos_los_tokens)
-        todos_los_errores.extend(errores_estructura)
-        
-        # Guardar errores
+        # 
+        # guardar errores
         with open("errores.txt", "w", encoding="utf-8") as f:
             if todos_los_errores:
                 f.write("\n".join(todos_los_errores))

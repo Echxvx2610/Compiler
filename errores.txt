@@ -1,3 +1,1 @@
-Error en Linea 2: Formato incorrecto después de '#include'
-Error en Linea 3: Variable 'stdio' usada sin declarar previamente
-Error en Linea 3: Variable 'h' usada sin declarar previamente
+Error en Linea 3: Llave de apertura '{' sin llave de cierre correspondiente (en 'desconocido')
