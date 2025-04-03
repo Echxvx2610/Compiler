@@ -1,9 +1,13 @@
-# include <stdio.h>
-    int main main ( ) {
-    int i = 0 ;
-        while ( i < 5 ) {
-        printf ( "El valor de i es: %d\n" , i ) ;
-    i + + ; // Incrementamos i para evitar un bucle infinito
+#incluir<stdio.h>
+
+enteromain(){
+
+para(enteroi=0;i<5;i++){
+
+printf("El valor de i es: %d\n",i);
+
 }
 
-return 0 ;
+retornar0;
+
+}

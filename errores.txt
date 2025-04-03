@@ -1,1 +1,3 @@
-Error en Linea 3: Llave de apertura '{' sin llave de cierre correspondiente (en 'desconocido')
+Error en Linea 4: Posible error de escritura 'i', ¿quizás quiso decir 'if'?
+Error en Linea 4: Posible error de escritura 'i', ¿quizás quiso decir 'if'?
+Error en Linea 5: Posible error de escritura 'i', ¿quizás quiso decir 'if'?
