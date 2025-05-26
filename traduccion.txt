@@ -1,13 +1,1 @@
-#incluir<stdio.h>
-
-enteromain(){
-
-para(enteroi=0;i<5;i++){
-
-printf("El valor de i es: %d\n",i);
-
-}
-
-retornar0;
-
-}
+# # incluir include <stdio.h> <stdio.h> entero int main main ( ( ) ) { { entero int x x = = 10 10 ; ; si if ( ( x x > > 5 5 ) ) { { printf printf ( ( "x es mayor que 5\n" "x es mayor que 5\n" ) ) ; ; } } retornar return 0 0 ; ; } } 

@@ -307,557 +307,508 @@ class NoteEditor(QMainWindow):
         TIPOS_DATOS = ["int", "float", "char", "double", "void", "long", "short", "unsigned", "signed"]
         
         # Lista de funciones de biblioteca estándar conocidas
-        FUNCIONES_BIBLIOTECA = ["printf", "scanf", "fprintf", "fscanf", "sprintf", "sscanf", 
-                            "malloc", "calloc", "realloc", "free", "fopen", "fclose", 
-                            "fread", "fwrite", "fseek", "ftell", "fgetc", "fputc", 
-                            "fgets", "fputs", "strlen", "strcpy", "strncpy", "strcmp", 
-                            "strncmp", "strcat", "strncat", "memcpy", "memmove", "memset"]
+        FUNCIONES_BIBLIOTECA = ["printf", "main"]
         
-        # Error de seguimiento y tracking
+        # Variables globales para el seguimiento
         errores_lexicos = []
+        errores_sintacticos = []
         todos_los_tokens = []
         tokens_y_formato = []
+        variables_declaradas = {}  # {nombre: tipo}
+        funciones_declaradas = set()
         
-        # Crear una clase Lexer para mejor organización
-        class CLexer:
-            # Lista de tokens a reconocer
-            tokens = [
-                'PALABRA_RESERVADA',
-                'TIPO_DATO',
-                'IDENTIFICADOR',
-                'IDENTIFICADOR_FUNCION',
-                'LLAMADA_FUNCION',
-                'MAIN_FUNCTION',
-                'ENTERO',
-                'DECIMAL',
-                'CADENA',
-                'CADENA_ERROR',
-                'CARACTER',
-                'CARACTER_ERROR',
-                'SIMBOLO',
-                'LIBRERIA',
-                'LIBRERIA_PERSONALIZADA',
-                'COMENTARIO',
-                'ERROR'
-            ]
+        # Definir tokens (requerido por PLY)
+        tokens = [
+            'PALABRA_RESERVADA',
+            'TIPO_DATO', 
+            'IDENTIFICADOR',
+            'ENTERO',
+            'DECIMAL',
+            'CADENA',
+            'CADENA_ERROR',
+            'CARACTER',
+            'CARACTER_ERROR',
+            'LIBRERIA',
+            'LIBRERIA_PERSONALIZADA',
+            'COMENTARIO_LINEA',
+            'COMENTARIO_BLOQUE',
+            'SIMBOLO',
+            'NEWLINE'
+        ]
+        
+        # Estados del lexer
+        states = (
+            ('comentario', 'exclusive'),
+        )
+        
+        # Reglas de tokens (deben seguir el patrón t_NOMBRE)
+        
+        # Comentarios de línea
+        def t_COMENTARIO_LINEA(t):
+            r'//.*'
+            todos_los_tokens.append(('Comentario', t.value, t.lineno))
+            return t
+        
+        # Comentarios de bloque - inicio
+        def t_COMENTARIO_BLOQUE_INICIO(t):
+            r'/\*'
+            t.lexer.comentario_inicio = t.lineno
+            t.lexer.comentario_texto = t.value
+            t.lexer.begin('comentario')
+
+        # Reglas para el estado de comentario
+        def t_comentario_contenido(t):
+            r'[^*\n]+'
+            t.lexer.comentario_texto += t.value
+
+        def t_comentario_asterisco(t):
+            r'\*(?!/)'
+            t.lexer.comentario_texto += t.value
+
+        def t_comentario_newline(t):
+            r'\n+'
+            t.lexer.lineno += len(t.value)
+            t.lexer.comentario_texto += t.value
+
+        def t_comentario_fin(t):
+            r'\*/'
+            t.lexer.comentario_texto += t.value
+            t.type = 'COMENTARIO_BLOQUE'
+            t.value = t.lexer.comentario_texto
+            t.lineno = t.lexer.comentario_inicio
+            t.lexer.begin('INITIAL')
+            todos_los_tokens.append(('Comentario', t.value, t.lineno))
+            return t
+
+        def t_comentario_error(t):
+            errores_lexicos.append(f"Error en comentario línea {t.lineno}: carácter inesperado '{t.value[0]}'")
+            t.lexer.skip(1)
+        
+        # Bibliotecas (deben ir antes que las cadenas)
+        def t_LIBRERIA(t):
+            r'<[a-zA-Z_][a-zA-Z0-9_]*\.h>'
+            todos_los_tokens.append(('Libreria', t.value, t.lineno))
+            return t
+        
+        def t_LIBRERIA_PERSONALIZADA(t):
+            r'"[a-zA-Z_][a-zA-Z0-9_]*\.h"'
+            todos_los_tokens.append(('Libreria_Personalizada', t.value, t.lineno))
+            return t
+        
+        # Cadenas (deben ir después de las librerías)
+        def t_CADENA(t):
+            r'"([^"\\]|\\.)*"'
+            todos_los_tokens.append(('Cadena', t.value, t.lineno))
+            return t
+        
+        def t_CADENA_ERROR(t):
+            r'"([^"\\]|\\.)*$'
+            errores_lexicos.append(f"Error línea {t.lineno}: Cadena sin cerrar: {t.value}")
+            todos_los_tokens.append(('Cadena_Error', t.value, t.lineno))
+            return t
+        
+        # Caracteres
+        def t_CARACTER(t):
+            r"'([^'\\]|\\.)'"
+            todos_los_tokens.append(('Caracter', t.value, t.lineno))
+            return t
+        
+        def t_CARACTER_ERROR(t):
+            r"'([^'\\]|\\.)*'?"
+            if not t.value.endswith("'") or len(t.value.replace("\\", "")) > 3:
+                errores_lexicos.append(f"Error línea {t.lineno}: Carácter mal formado: {t.value}")
+                todos_los_tokens.append(('Caracter_Error', t.value, t.lineno))
+            return t
+        
+        # Números decimales (debe ir antes que enteros)
+        def t_DECIMAL(t):
+            r'\d+\.\d+'
+            todos_los_tokens.append(('Decimal', float(t.value), t.lineno))
+            return t
+        
+        # Números enteros
+        def t_ENTERO(t):
+            r'\d+'
+            todos_los_tokens.append(('Entero', int(t.value), t.lineno))
+            return t
+        
+        # Identificadores y palabras clave
+        def t_IDENTIFICADOR(t):
+            r'[a-zA-Z_][a-zA-Z0-9_]*'
+            # Clasificar el token
+            if t.value in PALABRAS_RESERVADAS:
+                t.type = 'PALABRA_RESERVADA'
+                todos_los_tokens.append(('Palabra_Reservada', t.value, t.lineno))
+            elif t.value in TIPOS_DATOS:
+                t.type = 'TIPO_DATO'
+                todos_los_tokens.append(('Tipo_Dato', t.value, t.lineno))
+            else:
+                todos_los_tokens.append(('Identificador', t.value, t.lineno))
+            return t
+        
+        # Símbolos y operadores
+        def t_SIMBOLO(t):
+            r'[#<>(){};,.+\-*/=\[\]!&|%^~?:]'
+            todos_los_tokens.append(('Simbolo', t.value, t.lineno))
+            return t
+        
+        # Saltos de línea
+        def t_NEWLINE(t):
+            r'\n+'
+            t.lexer.lineno += len(t.value)
+            # No agregamos saltos de línea a la lista de tokens
+            pass
+        
+        # Espacios y tabs (ignorar)
+        t_ignore = ' \t'
+        
+        # Manejo de errores
+        def t_error(t):
+            errores_lexicos.append(f"Error línea {t.lineno}: Carácter ilegal '{t.value[0]}'")
+            t.lexer.skip(1)
+        
+        def post_procesar_tokens(tokens_list):
+            """
+            Post-procesa la lista de tokens para detectar errores sintácticos
+            """
+            nonlocal errores_sintacticos, variables_declaradas, funciones_declaradas
             
-            # Estados del analizador léxico
-            states = (
-                ('comentario', 'exclusive'),
-            )
+            tokens_procesados = []
+            i = 0
             
-            # Tokens para el estado INITIAL
+            # PASO 1: Análisis previo - recopilar todas las declaraciones sin validar
+            declaraciones_encontradas = {}
             
-            # Iniciar comentario de bloque
-            def t_COMENTARIO_INICIO(self, t):
-                r'/\*'
-                t.lexer.begin('comentario')
-                t.lexer.comentario_texto = t.value
-                return None
+            # Debug: Imprimir todos los tokens para diagnóstico
+            print("DEBUG - Tokens encontrados:")
+            for j, (tipo, valor, linea) in enumerate(tokens_list):
+                print(f"  {j}: {tipo} -> '{valor}' (línea {linea})")
             
-            # Comentario de línea
-            def t_COMENTARIO_LINEA(self, t):
-                r'//.*'
-                t.type = 'COMENTARIO'
-                todos_los_tokens.append(('Comentario', t.value, t.lineno))
-                tokens_y_formato.append(('Comentario', t.value, t.lineno))
-                return t
+            for j in range(len(tokens_list)):
+                tipo, valor, linea = tokens_list[j]
+                
+                # Detectar declaraciones de variables sin validar sintaxis aún
+                if tipo == 'Tipo_Dato' and j + 1 < len(tokens_list):
+                    next_token = tokens_list[j + 1]
+                    if next_token[0] == 'Identificador':
+                        print(f"DEBUG - Declaración encontrada: {next_token[1]} tipo {valor}")
+                        declaraciones_encontradas[next_token[1]] = valor
+                        variables_declaradas[next_token[1]] = valor  # Agregar inmediatamente
+                
+                # Detectar declaraciones de funciones
+                if tipo == 'Identificador' and j + 1 < len(tokens_list):
+                    if tokens_list[j + 1][0] == 'Simbolo' and tokens_list[j + 1][1] == '(':
+                        # Verificar si hay un tipo de dato antes (declaración de función)
+                        if j > 0 and tokens_list[j-1][0] == 'Tipo_Dato':
+                            funciones_declaradas.add(valor)
+                            print(f"DEBUG - Función declarada: {valor}")
+                        elif valor == 'main':
+                            funciones_declaradas.add(valor)
+                            print(f"DEBUG - Función main encontrada: {valor}")
             
-            # Bibliotecas
-            def t_LIBRERIA(self, t):
-                r'<[^>]*\.h>'
-                todos_los_tokens.append(('Libreria', t.value, t.lineno))
-                tokens_y_formato.append(('Libreria', t.value, t.lineno))
-                return t
+            # Agregar funciones de biblioteca como conocidas
+            for func in FUNCIONES_BIBLIOTECA:
+                funciones_declaradas.add(func)
             
-            def t_LIBRERIA_PERSONALIZADA(self, t):
-                r'"[^"]*\.h"'
-                todos_los_tokens.append(('Libreria_Personalizada', t.value, t.lineno))
-                tokens_y_formato.append(('Libreria_Personalizada', t.value, t.lineno))
-                return t
+            print(f"DEBUG - Variables declaradas encontradas: {variables_declaradas}")
+            print(f"DEBUG - Funciones declaradas encontradas: {funciones_declaradas}")
             
-            # Cadenas
-            def t_CADENA(self, t):
-                r'"[^"]*"'
-                todos_los_tokens.append(('Cadena', t.value, t.lineno))
-                tokens_y_formato.append(('Cadena', t.value, t.lineno))
-                return t
-            
-            def t_CADENA_ERROR(self, t):
-                r'"[^"]*$'
-                errores_lexicos.append(f"Error en Linea {t.lineno}: Cadena sin cerrar: {t.value}")
-                todos_los_tokens.append(('Cadena_Error', t.value, t.lineno))
-                tokens_y_formato.append(('Cadena_Error', t.value, t.lineno))
-                return t
-            
-            # Caracteres
-            def t_CARACTER(self, t):
-                r"'.'|'\\.'|'\\\\'"
-                todos_los_tokens.append(('Caracter', t.value, t.lineno))
-                tokens_y_formato.append(('Caracter', t.value, t.lineno))
-                return t
-            
-            def t_CARACTER_ERROR(self, t):
-                r"'[^']*'|'[^']*$"
-                if len(t.value) > 3 or not t.value.endswith("'"):
-                    errores_lexicos.append(f"Error en Linea {t.lineno}: Caracter mal formado: {t.value}")
-                    todos_los_tokens.append(('Caracter_Error', t.value, t.lineno))
-                    tokens_y_formato.append(('Caracter_Error', t.value, t.lineno))
-                return t
-            
-            # Números
-            def t_DECIMAL(self, t):
-                r'\b\d+\.\d+\b'
-                todos_los_tokens.append(('Decimal', t.value, t.lineno))
-                tokens_y_formato.append(('Decimal', t.value, t.lineno))
-                return t
-            
-            def t_ENTERO(self, t):
-                r'\b\d+\b'
-                todos_los_tokens.append(('Entero', t.value, t.lineno))
-                tokens_y_formato.append(('Entero', t.value, t.lineno))
-                return t
-            
-            # Identificadores y palabras clave
-            def t_IDENTIFICADOR(self, t):
-                r'\b[A-Za-z_][A-Za-z0-9_]*\b'
-                # Clasificar según el contenido del token
-                if t.value in PALABRAS_RESERVADAS:
-                    t.type = 'PALABRA_RESERVADA'
-                    todos_los_tokens.append(('Palabra_Reservada', t.value, t.lineno))
-                    tokens_y_formato.append(('Palabra_Reservada', t.value, t.lineno))
-                elif t.value in TIPOS_DATOS:
-                    t.type = 'TIPO_DATO'
-                    todos_los_tokens.append(('Tipo_Dato', t.value, t.lineno))
-                    tokens_y_formato.append(('Tipo_Dato', t.value, t.lineno))
+            # PASO 2: Procesar tokens con información completa
+            while i < len(tokens_list):
+                tipo, valor, linea = tokens_list[i]
+                
+                # Detectar declaraciones de variables
+                if tipo == 'Tipo_Dato':
+                    if i + 1 < len(tokens_list) and tokens_list[i + 1][0] == 'Identificador':
+                        var_name = tokens_list[i + 1][1]
+                        # No sobreescribir si ya está declarada
+                        if var_name not in variables_declaradas:
+                            variables_declaradas[var_name] = valor
+                        
+                        print(f"DEBUG - Procesando declaración: {var_name} = {valor}")
+                        
+                        # Verificar punto y coma solo si no es parámetro de función
+                        if not es_parametro_funcion(tokens_list, i):
+                            punto_coma_encontrado = False
+                            j = i + 2
+                            
+                            # Buscar hasta encontrar ; 
+                            while j < len(tokens_list):
+                                if tokens_list[j][0] == 'Simbolo':
+                                    if tokens_list[j][1] == ';':
+                                        punto_coma_encontrado = True
+                                        break
+                                    elif tokens_list[j][1] in ['{', '}', ')', ',']:
+                                        break
+                                j += 1
+                            
+                            if not punto_coma_encontrado and not es_declaracion_en_for(tokens_list, i):
+                                errores_sintacticos.append(f"Error sintáctico línea {linea}: Falta ';' después de la declaración de '{var_name}'")
+                
+                # Detectar funciones
+                elif tipo == 'Identificador':
+                    if i + 1 < len(tokens_list) and tokens_list[i + 1][0] == 'Simbolo' and tokens_list[i + 1][1] == '(':
+                        # Es una función
+                        if valor == 'main':
+                            tokens_procesados.append(('Main_Function', valor, linea))
+                        elif valor in FUNCIONES_BIBLIOTECA:
+                            tokens_procesados.append(('Llamada_Funcion_Biblioteca', valor, linea))
+                            print(f"DEBUG - Función de biblioteca encontrada: {valor}")
+                            # Verificar paréntesis balanceados
+                            if not verificar_parentesis_balanceados(tokens_list, i + 1):
+                                errores_sintacticos.append(f"Error sintáctico línea {linea}: Paréntesis desbalanceados en función '{valor}'")
+                        else:
+                            # Determinar si es declaración o llamada
+                            if es_declaracion_funcion(tokens_list, i):
+                                tokens_procesados.append(('Declaracion_Funcion', valor, linea))
+                            else:
+                                if valor in funciones_declaradas:
+                                    tokens_procesados.append(('Llamada_Funcion', valor, linea))
+                                else:
+                                    tokens_procesados.append(('Llamada_Funcion_No_Declarada', valor, linea))
+                                    errores_sintacticos.append(f"Error sintáctico línea {linea}: Función '{valor}' no declarada")
+                                
+                                if not verificar_parentesis_balanceados(tokens_list, i + 1):
+                                    errores_sintacticos.append(f"Error sintáctico línea {linea}: Paréntesis desbalanceados en función '{valor}'")
+                    else:
+                        # Verificar si la variable está declarada
+                        print(f"DEBUG - Verificando variable: {valor}")
+                        print(f"DEBUG - Variables conocidas: {list(variables_declaradas.keys())}")
+                        print(f"DEBUG - Declaraciones encontradas: {list(declaraciones_encontradas.keys())}")
+                        
+                        if (valor not in variables_declaradas and 
+                            valor not in declaraciones_encontradas and 
+                            valor not in funciones_declaradas and 
+                            valor not in FUNCIONES_BIBLIOTECA):
+                            errores_sintacticos.append(f"Error sintáctico línea {linea}: Variable '{valor}' no declarada")
+                        
+                        # Si está en declaraciones_encontradas, agregarla a variables_declaradas
+                        if valor in declaraciones_encontradas and valor not in variables_declaradas:
+                            variables_declaradas[valor] = declaraciones_encontradas[valor]
+                        
+                        tokens_procesados.append((tipo, valor, linea))
+                
+                # Verificar punto y coma en sentencias de control
+                elif tipo == 'Palabra_Reservada' and valor in ['return', 'break', 'continue']:
+                    tokens_procesados.append((tipo, valor, linea))
+                    if not verificar_punto_coma_siguiente(tokens_list, i):
+                        errores_sintacticos.append(f"Error sintáctico línea {linea}: Falta ';' después de '{valor}'")
+                
                 else:
-                    # Aquí solo hacemos la clasificación básica, las funciones se detectarán en post-procesamiento
-                    t.type = 'IDENTIFICADOR'
-                    todos_los_tokens.append(('Identificador', t.value, t.lineno))
-                    tokens_y_formato.append(('Identificador', t.value, t.lineno))
-                return t
+                    tokens_procesados.append((tipo, valor, linea))
+                
+                i += 1
             
-            # Símbolos
-            def t_SIMBOLO(self, t):
-                r'[#<>()\{\};,.+\-*/=\[\]]'
-                todos_los_tokens.append(('Simbolo', t.value, t.lineno))
-                tokens_y_formato.append(('Simbolo', t.value, t.lineno))
-                return t
-            
-            # Espacios y formato
-            def t_ESPACIO(self, t):
-                r'[ \t]+'
-                # Guardamos el espacio para preservar formato
-                return None
-            
-            # Saltos de línea
-            def t_newline(self, t):
-                r'\n+'
-                t.lexer.lineno += len(t.value)
-                tokens_y_formato.append('\n' * len(t.value))  # Para mantener el formato
-                return None
-            
-            # Error general
-            def t_error(self, t):
-                errores_lexicos.append(f"Error en Linea {t.lineno}: Carácter ilegal {t.value[0]}")
-                t.lexer.skip(1)
-            
-            # Reglas para el estado de comentario
-            def t_comentario_CONTENIDO(self, t):
-                r'[^*]+'
-                t.lexer.comentario_texto += t.value
-                return None
-            
-            def t_comentario_ASTERISCO(self, t):
-                r'\*(?!\/)' 
-                t.lexer.comentario_texto += t.value
-                return None
-            
-            def t_comentario_FIN(self, t):
-                r'\*/'
-                t.lexer.comentario_texto += t.value
-                t.type = 'COMENTARIO'
-                t.value = t.lexer.comentario_texto
-                t.lexer.begin('INITIAL')
-                todos_los_tokens.append(('Comentario', t.value, t.lineno))
-                tokens_y_formato.append(('Comentario', t.value, t.lineno))
-                return t
-            
-            # Error en estado de comentario
-            def t_comentario_error(self, t):
-                errores_lexicos.append(f"Error en el comentario de bloque en Linea {t.lineno}: {t.value[0]}")
-                t.lexer.skip(1)
+            return tokens_procesados
         
-        # Instanciamos el lexer
-        lexer_instance = CLexer()
-        lexer = lex.lex(module=lexer_instance)
+        def es_parametro_funcion(tokens_list, index):
+            """Verifica si la declaración está dentro de parámetros de función"""
+            # Buscar hacia atrás hasta encontrar un paréntesis de apertura
+            i = index - 1
+            nivel_parentesis = 0
+            
+            while i >= 0:
+                if tokens_list[i][0] == 'Simbolo':
+                    if tokens_list[i][1] == ')':
+                        nivel_parentesis += 1
+                    elif tokens_list[i][1] == '(':
+                        nivel_parentesis -= 1
+                        if nivel_parentesis < 0:
+                            # Estamos dentro de paréntesis, verificar si es función
+                            if i > 0 and tokens_list[i-1][0] == 'Identificador':
+                                return True
+                            return False
+                    elif tokens_list[i][1] in [';', '{', '}'] and nivel_parentesis == 0:
+                        return False
+                i -= 1
+            return False
         
-        # Configuramos el lexer
-        lexer.lineno = 1
-        lexer.comentario_texto = ''
+        def es_declaracion_en_for(tokens_list, index):
+            """Verifica si la declaración está dentro de un bucle for"""
+            # Buscar hacia atrás la palabra 'for'
+            i = index - 1
+            nivel_parentesis = 0
+            
+            while i >= 0:
+                if tokens_list[i][0] == 'Simbolo':
+                    if tokens_list[i][1] == ')':
+                        nivel_parentesis += 1
+                    elif tokens_list[i][1] == '(':
+                        nivel_parentesis -= 1
+                        if nivel_parentesis < 0 and i > 0:
+                            if tokens_list[i-1][0] == 'Palabra_Reservada' and tokens_list[i-1][1] == 'for':
+                                return True
+                            return False
+                i -= 1
+            return False
         
-        # Obtener el contenido del editor
+        def es_declaracion_funcion(tokens_list, index):
+            """Determina si es una declaración de función"""
+            # Buscar hacia atrás un tipo de dato
+            i = index - 1
+            while i >= 0:
+                if tokens_list[i][0] == 'Tipo_Dato':
+                    return True
+                elif tokens_list[i][0] == 'Simbolo' and tokens_list[i][1] in ['\n', ';', '}', '{']:
+                    break
+                i -= 1
+            return False
+        
+        def verificar_parentesis_balanceados(tokens_list, start_index):
+            """Verifica que los paréntesis estén balanceados"""
+            if start_index >= len(tokens_list) or tokens_list[start_index][1] != '(':
+                return False
+            
+            nivel = 1
+            i = start_index + 1
+            
+            while i < len(tokens_list) and nivel > 0:
+                if tokens_list[i][0] == 'Simbolo':
+                    if tokens_list[i][1] == '(':
+                        nivel += 1
+                    elif tokens_list[i][1] == ')':
+                        nivel -= 1
+                i += 1
+            
+            return nivel == 0
+        
+        def verificar_punto_coma_siguiente(tokens_list, index):
+            """Verifica que haya un punto y coma después de la sentencia"""
+            i = index + 1
+            while i < len(tokens_list):
+                if tokens_list[i][0] == 'Simbolo':
+                    if tokens_list[i][1] == ';':
+                        return True
+                    elif tokens_list[i][1] in ['{', '}']:
+                        return False
+                i += 1
+            return False
+        
+        def detectar_errores_estructurales():
+            """Detecta errores de llaves, paréntesis y corchetes desbalanceados"""
+            nivel_llaves = 0
+            nivel_parentesis = 0
+            nivel_corchetes = 0
+            
+            for tipo, valor, linea in todos_los_tokens:
+                if tipo == 'Simbolo':
+                    if valor == '{':
+                        nivel_llaves += 1
+                    elif valor == '}':
+                        nivel_llaves -= 1
+                        if nivel_llaves < 0:
+                            errores_sintacticos.append(f"Error sintáctico línea {linea}: Llave de cierre sin apertura")
+                    elif valor == '(':
+                        nivel_parentesis += 1
+                    elif valor == ')':
+                        nivel_parentesis -= 1
+                        if nivel_parentesis < 0:
+                            errores_sintacticos.append(f"Error sintáctico línea {linea}: Paréntesis de cierre sin apertura")
+                    elif valor == '[':
+                        nivel_corchetes += 1
+                    elif valor == ']':
+                        nivel_corchetes -= 1
+                        if nivel_corchetes < 0:
+                            errores_sintacticos.append(f"Error sintáctico línea {linea}: Corchete de cierre sin apertura")
+            
+            # Verificar elementos sin cerrar
+            if nivel_llaves > 0:
+                errores_sintacticos.append(f"Error sintáctico: {nivel_llaves} llave(s) sin cerrar")
+            if nivel_parentesis > 0:
+                errores_sintacticos.append(f"Error sintáctico: {nivel_parentesis} paréntesis sin cerrar")
+            if nivel_corchetes > 0:
+                errores_sintacticos.append(f"Error sintáctico: {nivel_corchetes} corchete(s) sin cerrar")
+        
+        # Crear el lexer
+        try:
+            lexer = lex.lex()
+            lexer.lineno = 1
+        except Exception as e:
+            print(f"Error creando lexer: {e}")
+            return None
+        
+        # Obtener contenido del editor
         contenido = self.textEdit.toPlainText()
         
-        # Analizamos el contenido
+        # Analizar el contenido
         lexer.input(contenido)
         
-        # Obtenemos todos los tokens
-        token_lista_raw = []
+        # Procesar todos los tokens
         while True:
             tok = lexer.token()
             if not tok:
                 break
-            token_lista_raw.append(tok)
         
-        # Post-procesamiento para detectar funciones y características más avanzadas
-        def post_procesar_tokens():
-            """
-            Realiza un post-procesamiento de los tokens para detectar funciones y
-            otras características contextuales, incluyendo validación de estructuras de control.
-            """
-            todos_los_tokens_procesados = []
-            variables_declaradas = set()
-            funciones_declaradas = set()
-            ambitos = [set()]  # Lista de conjuntos de variables
-            llaves_apertura = []  # [(linea, contexto), ...]
-            bloques_esperando_llave = []
-            errores_sintacticos = []
+        # Post-procesar tokens
+        tokens_procesados = post_procesar_tokens(todos_los_tokens)
+        
+        # Detectar errores estructurales
+        detectar_errores_estructurales()
+        
+        # Generar archivos de salida
+        try:
+            # 1. Archivo trad.txt - Solo tokens
+            with open('trad.txt', 'w', encoding='utf-8') as f:
+                for tipo, valor, linea in tokens_procesados:
+                    f.write(f"{valor}\n")
             
-            # Para rastrear bloques if pendientes de cierre (para validación de else)
-            bloques_if_abiertos = []
-            
-            i = 0
-            while i < len(todos_los_tokens):
-                tipo, token, num_linea = todos_los_tokens[i]
-                
-                # Detectar identificadores de función (igual que antes)
-                if tipo == "Identificador" and i < len(todos_los_tokens) - 1 and todos_los_tokens[i+1][1] == '(':
-                    # Verificar si hay un tipo de dato antes
-                    if i > 0 and (todos_los_tokens[i-1][0] == "Tipo_Dato" or todos_los_tokens[i-1][1] in TIPOS_DATOS):
-                        nuevo_tipo = "Identificador_Funcion"
-                        funciones_declaradas.add(token)
-                        if token == "main":
-                            nuevo_tipo = "Main_Function"
+            # 2. Archivo traduccion.txt - Código traducido
+            with open('traduccion.txt', 'w', encoding='utf-8') as f:
+                for tipo, valor, linea in tokens_procesados:
+                    if tipo == 'Palabra_Reservada' and valor in PALABRAS_RESERVADAS:
+                        f.write(f"{PALABRAS_RESERVADAS[valor]} ")
                     else:
-                        nuevo_tipo = "Llamada_Funcion"
-                    
-                    todos_los_tokens_procesados.append((nuevo_tipo, token, num_linea))
+                        f.write(f"{valor} ")
+            
+            # 3. Archivo errores.txt - Todos los errores
+            with open('errores.txt', 'w', encoding='utf-8') as f:
+                f.write("=== ANÁLISIS DE ERRORES ===\n\n")
+                
+                f.write("ERRORES LÉXICOS:\n")
+                if errores_lexicos:
+                    for error in errores_lexicos:
+                        f.write(f"  • {error}\n")
                 else:
-                    todos_los_tokens_procesados.append((tipo, token, num_linea))
+                    f.write("  ✓ No se encontraron errores léxicos\n")
                 
-                # Detectar errores en identificadores que podrían ser palabras reservadas mal escritas
-                # if tipo == "Identificador":
-                #     # Cuando detectas un identificador que podría ser una palabra reservada mal escrita
-                #     # Añade una condición para excluir cuando es claramente una variable en un bucle for
-                #     es_variable_en_for = False
-                #     if i > 1 and todos_los_tokens[i-2][1] == 'for' and todos_los_tokens[i-1][1] == '(':
-                #         # Estamos dentro de un bucle for después del paréntesis de apertura
-                #         es_variable_en_for = True
-                #     # O si estamos en una expresión de iteración (i++)
-                #     elif i > 0 and i < len(todos_los_tokens) - 1:
-                #         if token == 'i' and todos_los_tokens[i+1][1] in ['++', '+=', '--', '-=']:
-                #             es_variable_en_for = True
-                    
-                #     # Sólo verificar errores de escritura si no es una variable legítima
-                #     if not es_variable_en_for and token in palabras_similares:
-                #         errores_sintacticos.append(f"Error en Linea {num_linea}: Posible error de escritura '{token}', ¿quizás quiso decir '{palabras_similares[token]}'?")
-                    
-                #     # Diccionario de posibles errores de escritura y sus correcciones
-                #     palabras_similares = {
-                #         "i": "if", "f": "if", "fi": "if", 
-                #         "whil": "while", "whlie": "while", "wile": "while",
-                #         "fo": "for", "fr": "for", "fro": "for","ese": "else",
-                #         "els": "else", "eles": "else", "lese": "else",
-                #         "switc": "switch", "swich": "switch", "swith": "switch",
-                #         "casse": "case", "cas": "case", "cse": "case",
-                #         "dafault": "default", "defult": "default", "defalt": "default",
-                #         "brak": "break", "brk": "break", "brek": "break",
-                #         "retur": "return", "retrun": "return", "retrn": "return",
-                #         "continu": "continue", "contiue": "continue", "cotinue": "continue",
-                #         "flaot": "float", "flot": "float", "flt": "float",
-                #         "duble": "double", "doulbe": "double", "doubel": "double",
-                #         "vod": "void", "viod": "void", "vid": "void",
-                #         "inclde": "include", "includ": "include", "iclude": "include"
-                #     }
-                    
-                #     # Verificar si el identificador podría ser una palabra reservada mal escrita
-                #     if token in palabras_similares:
-                #         errores_sintacticos.append(f"Error en Linea {num_linea}: Posible error de escritura '{token}', ¿quizás quiso decir '{palabras_similares[token]}'?")
-                    
-                #     # También podemos usar la distancia de edición para identificar errores más complejos
-                #     # (esto sería una mejora adicional si se necesita)
-                # Detectar errores en identificadores que podrían ser palabras reservadas mal escritas
-                if tipo == "Identificador":
-                    # Diccionario de posibles errores de escritura y sus correcciones
-                    palabras_similares = {
-                        "i": "if", "f": "if", "fi": "if", 
-                        "whil": "while", "whlie": "while", "wile": "while",
-                        "fo": "for", "fr": "for", "fro": "for","ese": "else",
-                        "els": "else", "eles": "else", "lese": "else",
-                        "switc": "switch", "swich": "switch", "swith": "switch",
-                        "casse": "case", "cas": "case", "cse": "case",
-                        "dafault": "default", "defult": "default", "defalt": "default",
-                        "brak": "break", "brk": "break", "brek": "break",
-                        "retur": "return", "retrun": "return", "retrn": "return",
-                        "continu": "continue", "contiue": "continue", "cotinue": "continue",
-                        "flaot": "float", "flot": "float", "flt": "float",
-                        "duble": "double", "doulbe": "double", "doubel": "double",
-                        "vod": "void", "viod": "void", "vid": "void",
-                        "inclde": "include", "includ": "include", "iclude": "include"
-                    } 
-                    # Verificar si el identificador podría ser una palabra reservada mal escrita
-                    if token in palabras_similares:
-                        # Verificar si estamos en un contexto donde este identificador es válido
-                        es_variable_valida = False
-                        
-                        # Para 'i', comprobar si está en un bucle for
-                        if token == "i":
-                            # 1. Buscar un 'for' reciente
-                            for_encontrado = False
-                            for j in range(max(0, i-5), i):
-                                if j < len(todos_los_tokens) and todos_los_tokens[j][0] == "Palabra_Reservada" and todos_los_tokens[j][1] == "for":
-                                    for_encontrado = True
-                                    break
-                                    
-                            # 2. Verificar si después de 'i' hay un operador de comparación o incremento
-                            operador_valido = False
-                            if i+1 < len(todos_los_tokens):
-                                siguiente_token = todos_los_tokens[i+1][1]
-                                if siguiente_token in ['<', '>', '<=', '>=', '==', '!=', '++', '--', '+=', '-=']:
-                                    operador_valido = True
-                                    
-                            es_variable_valida = for_encontrado and operador_valido
-                            
-                            # 3. O también verificar si es una declaración de variable en for
-                            if not es_variable_valida and i >= 2:
-                                # Verificar patrón "for (int i" o similar
-                                if (todos_los_tokens[i-2][1] == "for" and 
-                                    todos_los_tokens[i-1][1] == "(" and 
-                                    i > 0 and todos_los_tokens[i-1][0] in ["Tipo_Dato", "Palabra_Reservada"]):
-                                    es_variable_valida = True
-                        
-                        # Solo reportar error si no es una variable válida en este contexto
-                        if not es_variable_valida:
-                            errores_sintacticos.append(f"Error en Linea {num_linea}: Posible error de escritura '{token}', ¿quizás quiso decir '{palabras_similares[token]}'?")
-                                
-                # Analizar estructuras de control
-                if tipo == "Palabra_Reservada":
-                    # Validar estructura if
-                    if token == "if":
-                        # Guardar posición para comprobación posterior
-                        if_pos = i
-                        if_line = num_linea
-                        
-                        # Registrar este if para validar else
-                        bloques_if_abiertos.append((if_line, len(llaves_apertura)))
-                        
-                        # Verificar formato correcto: if ( expresion ) {
-                        if i + 3 < len(todos_los_tokens):
-                            # Comprobar paréntesis de apertura
-                            if todos_los_tokens[i+1][1] != '(':
-                                errores_sintacticos.append(f"Error en Linea {num_linea}: Falta paréntesis de apertura después de 'if'")
-                            
-                            # Buscar el paréntesis de cierre
-                            j = i + 2
-                            parentesis_abiertos = 1
-                            while j < len(todos_los_tokens) and parentesis_abiertos > 0:
-                                if todos_los_tokens[j][1] == '(':
-                                    parentesis_abiertos += 1
-                                elif todos_los_tokens[j][1] == ')':
-                                    parentesis_abiertos -= 1
-                                j += 1
-                            
-                            if parentesis_abiertos > 0:
-                                errores_sintacticos.append(f"Error en Linea {num_linea}: Falta paréntesis de cierre para 'if'")
-                            else:
-                                # Después del paréntesis de cierre debe haber una llave de apertura
-                                # Buscar la llave, ignorando posibles espacios o comentarios
-                                k = j
-                                encontro_llave = False
-                                while k < len(todos_los_tokens) and not encontro_llave:
-                                    if todos_los_tokens[k][0] == "Simbolo" and todos_los_tokens[k][1] == '{':
-                                        encontro_llave = True
-                                        break
-                                    elif todos_los_tokens[k][0] not in ["Comentario", "Espacio"]:
-                                        if todos_los_tokens[k][0] == "Palabra_Reservada" and todos_los_tokens[k][1] in ["if", "else", "while", "for"]:
-                                            break
-                                        elif todos_los_tokens[k][1] not in ['\n', '\t', ' ']:
-                                            break
-                                    k += 1
-                                
-                                if not encontro_llave:
-                                    errores_sintacticos.append(f"Error en Linea {num_linea}: Falta llave de apertura '{{' después de la condición 'if'")
-                        
-                        bloques_esperando_llave.append(("if", if_line))
-                    
-                    # Validar estructura else
-                    elif token == "else":
-                        else_line = num_linea
-                        
-                        # Verificar si hay un 'if' previo al que este else pueda corresponder
-                        tiene_if_correspondiente = False
-                        
-                        # Un else corresponde a un if si:
-                        # 1. Hay un if abierto (en bloques_if_abiertos)
-                        # 2. No hay otros bloques entre el if y el else que no sean del mismo if
-                        for if_line, nivel_llaves in bloques_if_abiertos:
-                            # Si el nivel de llaves al momento del if es igual al actual menos 1
-                            # (acabamos de cerrar una llave que corresponde al if), este else puede corresponder
-                            if nivel_llaves <= len(llaves_apertura):
-                                tiene_if_correspondiente = True
-                                break
-                        
-                        if not tiene_if_correspondiente:
-                            errores_sintacticos.append(f"Error en Linea {num_linea}: 'else' sin 'if' correspondiente")
-                        
-                        # Verificar que después del 'else' venga una llave o un 'if' (caso else if)
-                        if i + 1 < len(todos_los_tokens):
-                            siguiente_token = todos_los_tokens[i+1]
-                            
-                            # Caso else if
-                            if siguiente_token[0] == "Palabra_Reservada" and siguiente_token[1] == "if":
-                                pass  # El procesamiento del 'if' se hará en la siguiente iteración
-                            # Caso else {
-                            elif siguiente_token[1] != '{':
-                                # Buscar la llave, ignorando posibles espacios o comentarios
-                                k = i + 1
-                                encontro_llave = False
-                                while k < len(todos_los_tokens) and not encontro_llave:
-                                    if todos_los_tokens[k][0] == "Simbolo" and todos_los_tokens[k][1] == '{':
-                                        encontro_llave = True
-                                        break
-                                    elif todos_los_tokens[k][0] not in ["Comentario", "Espacio"]:
-                                        if todos_los_tokens[k][1] not in ['\n', '\t', ' ']:
-                                            break
-                                    k += 1
-                                
-                                if not encontro_llave:
-                                    errores_sintacticos.append(f"Error en Linea {num_linea}: Falta llave de apertura '{{' después de 'else'")
-                        
-                        bloques_esperando_llave.append(("else", else_line))
-                    if token == "for":
-                        # Guardar posición para comprobación posterior
-                        for_pos = i
-                        for_line = num_linea
-                        
-                        # Verificar formato correcto: for ( expresion ; expresion ; expresion ) {
-                        if i + 3 < len(todos_los_tokens):
-                            # Comprobar paréntesis de apertura
-                            if todos_los_tokens[i+1][1] != '(':
-                                errores_sintacticos.append(f"Error en Linea {num_linea}: Falta paréntesis de apertura después de 'for'")
-                            
-                            # Buscar el paréntesis de cierre y verificar la estructura interna (3 partes separadas por punto y coma)
-                            j = i + 2
-                            parentesis_abiertos = 1
-                            punto_y_coma_count = 0
-                            
-                            # Variables para rastrear la posición de 'i' en un bucle for
-                            posible_variable_i = None
-                            
-                            while j < len(todos_los_tokens) and parentesis_abiertos > 0:
-                                if todos_los_tokens[j][1] == '(':
-                                    parentesis_abiertos += 1
-                                elif todos_los_tokens[j][1] == ')':
-                                    parentesis_abiertos -= 1
-                                elif todos_los_tokens[j][1] == ';' and parentesis_abiertos == 1:
-                                    punto_y_coma_count += 1
-                                
-                                # Registrar posición de variable 'i' en el bucle for
-                                if parentesis_abiertos == 1 and todos_los_tokens[j][0] == "Identificador" and todos_los_tokens[j][1] == "i":
-                                    posible_variable_i = j
-                                
-                                j += 1
-                            
-                            # Excluir 'i' de las comprobaciones de errores de escritura si está en un bucle for
-                            if posible_variable_i is not None:
-                                # Marca la posición para que no se considere un error de escritura
-                                for pos in range(posible_variable_i, posible_variable_i + 1):
-                                    if pos < len(todos_los_tokens) and todos_los_tokens[pos][1] == "i":
-                                        todos_los_tokens[pos] = (todos_los_tokens[pos][0], "i_variable", todos_los_tokens[pos][2])
-                            
-                            if parentesis_abiertos > 0:
-                                errores_sintacticos.append(f"Error en Linea {num_linea}: Falta paréntesis de cierre para 'for'")
-                            else:
-                                # Verificar si tiene los dos punto y coma
-                                if punto_y_coma_count != 2:
-                                    errores_sintacticos.append(f"Error en Linea {num_linea}: La estructura 'for' debe tener 3 partes separadas por 2 punto y coma")
-                                
-                                # Después del paréntesis de cierre debe haber una llave de apertura
-                                # Buscar la llave, ignorando posibles espacios o comentarios
-                                k = j
-                                encontro_llave = False
-                                while k < len(todos_los_tokens) and not encontro_llave:
-                                    if todos_los_tokens[k][0] == "Simbolo" and todos_los_tokens[k][1] == '{':
-                                        encontro_llave = True
-                                        break
-                                    elif todos_los_tokens[k][0] not in ["Comentario", "Espacio"]:
-                                        if todos_los_tokens[k][0] == "Palabra_Reservada" and todos_los_tokens[k][1] in ["if", "else", "while", "for"]:
-                                            break
-                                        elif todos_los_tokens[k][1] not in ['\n', '\t', ' ']:
-                                            break
-                                    k += 1
-                                
-                                if encontro_llave:
-                                    # Si encontramos la llave, no añadimos a bloques_esperando_llave
-                                    pass
-                                else:
-                                    errores_sintacticos.append(f"Error en Linea {num_linea}: Falta llave de apertura '{{' después de la declaración 'for'")
-                                    # Solo añadimos a bloques_esperando_llave si no encontramos la llave
-                        bloques_esperando_llave.append(("for", for_line))
-                        
-                    # Validaciones para while, for, switch, etc.
-                    elif token in ["while", "for", "switch", "do"]:
-                        bloques_esperando_llave.append((token, num_linea))
-                        # Aquí se puede añadir validaciones específicas para cada estructura
+                f.write(f"\nERRORES SINTÁCTICOS:\n")
+                if errores_sintacticos:
+                    for error in errores_sintacticos:
+                        f.write(f"  • {error}\n")
+                else:
+                    f.write("  ✓ No se encontraron errores sintácticos\n")
                 
-                # Verificar apertura de bloques
-                elif tipo == "Simbolo" and token == '{':
-                    # Determinar el contexto de esta llave
-                    contexto = "desconocido"
-                    if bloques_esperando_llave:
-                        tipo_bloque, linea_bloque = bloques_esperando_llave.pop()
-                        contexto = tipo_bloque
-                    
-                    # Guardar posición y contexto de la llave
-                    llaves_apertura.append((num_linea, contexto))
-                    ambitos.append(set())
+                f.write(f"\n=== RESUMEN ===\n")
+                f.write(f"Total errores léxicos: {len(errores_lexicos)}\n")
+                f.write(f"Total errores sintácticos: {len(errores_sintacticos)}\n")
+                f.write(f"Variables declaradas: {len(variables_declaradas)}\n")
+                f.write(f"Funciones encontradas: {len(funciones_declaradas)}\n")
                 
-                # Verificar cierre de bloques
-                elif tipo == "Simbolo" and token == '}':
-                    if llaves_apertura:
-                        linea_apertura, contexto = llaves_apertura.pop()
-                        
-                        # Si estamos cerrando un bloque if, actualizar bloques_if_abiertos
-                        if contexto == "if":
-                            # Buscar y eliminar el if correspondiente
-                            for j in range(len(bloques_if_abiertos)-1, -1, -1):
-                                if_line, nivel = bloques_if_abiertos[j]
-                                if nivel == len(llaves_apertura) + 1:  # +1 porque ya hemos hecho pop
-                                    bloques_if_abiertos.pop(j)
-                                    break
-                        
-                        if ambitos:
-                            ambitos.pop()
-                    else:
-                        errores_sintacticos.append(f"Error en Linea {num_linea}: Llave de cierre '}}' sin llave de apertura correspondiente")
+                if variables_declaradas:
+                    f.write(f"\nVARIABLES DECLARADAS:\n")
+                    for var, tipo in variables_declaradas.items():
+                        f.write(f"  • {var}: {tipo}\n")
                 
-                i += 1
+                if funciones_declaradas:
+                    f.write(f"\nFUNCIONES ENCONTRADAS:\n")
+                    for func in funciones_declaradas:
+                        f.write(f"  • {func}\n")
             
-            # Verificar si quedaron llaves de apertura sin cerrar
-            if llaves_apertura:
-                for num_linea, contexto in llaves_apertura:
-                    errores_sintacticos.append(f"Error en Linea {num_linea}: Llave de apertura '{{' en bloque '{contexto}' sin llave de cierre correspondiente")
+            print("✓ Análisis completado exitosamente")
+            print(f"✓ Archivos generados: trad.txt, traduccion.txt, errores.txt")
+            print(f"✓ Errores encontrados: {len(errores_lexicos) + len(errores_sintacticos)}")
             
-            # Verificar si quedaron estructuras esperando llaves
-            if bloques_esperando_llave:
-                for tipo_bloque, num_linea in bloques_esperando_llave:
-                    errores_sintacticos.append(f"Error en Linea {num_linea}: Estructura '{tipo_bloque}' sin llave de apertura correspondiente")
+            return {
+                'tokens': tokens_procesados,
+                'errores_lexicos': errores_lexicos,
+                'errores_sintacticos': errores_sintacticos,
+                'variables': variables_declaradas,
+                'funciones': funciones_declaradas
+            }
             
-            return todos_los_tokens_procesados, errores_sintacticos
-        
-        # Realizar post-procesamiento
-        todos_los_tokens_procesados, errores_sintacticos = post_procesar_tokens()
+        except Exception as e:
+            print(f"Error generando archivos: {e}")
+            return None
         
         # Traducir el código
         def traducir_codigo(tokens):
